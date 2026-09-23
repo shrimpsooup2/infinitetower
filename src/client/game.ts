@@ -6,8 +6,9 @@ import { TARGET_MODES } from '../sim/types.ts';
 import { TOWERS, SOCKET_COST, SOCKET_ROLE } from '../content/towers.ts';
 import { POWER_BY_ID, FAMILIES } from '../content/powers.ts';
 import { ENEMY_BY_ID, DIMENSION_NAMES, dimensionOf } from '../content/enemies.ts';
+import { TUTORIAL_MAP } from '../content/maps.ts';
 import { RARITIES, rarityFactor } from '../content/rarity.ts';
-import { PACKS, PACK_BY_ID, SCRAP_VALUE } from '../content/packs.ts';
+import { PACKS, PACK_BY_ID } from '../content/packs.ts';
 import { drawPackArt } from './render/pack-art.ts';
 import type { PackInst } from '../sim/world.ts';
 import { waveSummary } from '../content/waves.ts';
@@ -21,6 +22,7 @@ import type { Audio } from './audio.ts';
 import type { ForgeClient } from './forge.ts';
 import { type Codex, type Settings, saveRun, clearRun, recordRun, saveSettings } from './storage.ts';
 import { colorsFor } from '../sim/world.ts';
+import { Tutorial } from './tutorial.ts';
 
 const BUILD_COLORS = ['#8efffb', '#b4ff8e', '#ff8e8e', '#ffeb8e', '#8eb2ff', '#b58eff', '#ffb08e', '#8effc3', '#e08eff', '#ff8ec8'];
 
@@ -33,6 +35,8 @@ export interface GameDeps {
   forge: ForgeClient;
   exit(to: 'title' | 'maps'): void;
   restart(): void;
+  /** Set for the guided tutorial run; `done` marks it finished. */
+  tutorial?: { done(): void };
 }
 
 export class Game {
@@ -62,7 +66,8 @@ export class Game {
   private sideKey = '';
   private previewKey = '';
   private buildKey = '';
-  private hintKey = '';
+  private hudKey = '';
+  private tut: Tutorial | null = null;
   private modalPause = false;
   private packKey = '';
   private listeners: [EventTarget, string, EventListener][] = [];
@@ -71,7 +76,9 @@ export class Game {
     this.d = d;
     this.map = map;
     this.diff = diff;
-    this.w = new World({ map, difficulty: diff, seed: save?.seed, specProvider: d.forge.provider, autoStart: d.settings.autoStart });
+    this.w = d.tutorial
+      ? new World({ map: TUTORIAL_MAP, difficulty: 'casual', seed: 7, specProvider: d.forge.provider, autoStart: false, packs: false, startGold: 250 })
+      : new World({ map, difficulty: diff, seed: save?.seed, specProvider: d.forge.provider, autoStart: d.settings.autoStart });
     if (save) this.w.restore(save);
     d.forge.attach(this.w);
     this.r = new Renderer(d.canvas);
@@ -82,6 +89,20 @@ export class Game {
     this.buildUI();
     this.layout();
     this.bindInput();
+    if (d.tutorial) {
+      this.tut = new Tutorial({
+        w: this.w, ui: d.ui,
+        selected: () => this.selected,
+        placing: () => this.placing !== null,
+        modalOpen: () => this.modalPause || this.paused || this.ended,
+        tileRect: (x, y) => {
+          const c = this.r.cam;
+          return new DOMRect(c.ox + (x - 0.5) * c.s, c.oy + (y - 0.5) * c.s, c.s, c.s);
+        },
+        release: () => { this.w.autoStart = d.settings.autoStart; },
+        skip: () => { d.tutorial?.done(); d.exit('maps'); },
+      });
+    }
   }
 
   // ------------------------------------------------------------ lifecycle
@@ -111,7 +132,7 @@ export class Game {
 
   private tick(dt: number): void {
     const w = this.w;
-    if (!this.paused && !this.modalPause && !this.ended) {
+    if (!this.paused && !this.modalPause && !this.ended && !this.tut?.blocking) {
       this.acc += dt * this.speed;
       let steps = 0;
       const max = 10 * this.speed;
@@ -141,11 +162,12 @@ export class Game {
   private renderOpts(): RenderOpts {
     return {
       selected: this.selected, hoverTile: this.hoverTile, placing: this.placing, showRanges: this.d.settings.showRanges,
-      damageNumbers: this.d.settings.damageNumbers,
+      damageNumbers: this.d.settings.damageNumbers, beacon: this.tut?.beacon ?? null,
     };
   }
 
   private autosave(): void {
+    if (this.tut) return;
     if (this.w.phase === 'running' && this.w.quiescent()) saveRun(this.w.snapshot());
   }
 
@@ -155,7 +177,7 @@ export class Game {
     this.r.resize();
     const W = window.innerWidth, H = window.innerHeight;
     const right = W > 1100 ? 320 : 8;
-    const left = W > 760 ? 100 : 78;
+    const left = W > 760 ? 124 : 78;
     this.r.fit(this.w, { x: left, y: 48, w: W - left - right, h: H - 48 - (W > 760 ? 134 : 142) });
   }
 
@@ -291,7 +313,7 @@ export class Game {
     const now = performance.now();
     if (now - this.sellArm > 1500) {
       this.sellArm = now;
-      this.toast(`Press S again to sell for ${this.w.sellValue(t)} gold${t.cards.length ? ' (cards return to your hand)' : ''}`, 'info');
+      this.toast(`Sell for ${this.w.sellValue(t)} gold? Press again to confirm`, 'info');
       return;
     }
     this.w.sell(t.id);
@@ -336,28 +358,26 @@ export class Game {
     this.el.wavebar = h('div', { class: 'wavebar' });
     this.el.side = h('div', { class: 'side' });
     this.el.toasts = h('div', { class: 'toasts' });
-    this.el.hint = h('div', { class: 'hint hidden' });
     this.el.banner = h('div', {});
     this.el.modal = h('div', {});
     this.el.tip = h('div', { class: 'panel hidden', style: { position: 'absolute', maxWidth: '280px', pointerEvents: 'none', zIndex: '5' } });
-    ui.append(this.el.tl, this.el.tr, this.el.tc, this.el.build, this.el.packs, this.el.hand, this.el.wavebar, this.el.side, this.el.toasts, this.el.hint, this.el.banner, this.el.modal, this.el.tip);
+    ui.append(this.el.tl, this.el.tr, this.el.tc, this.el.build, this.el.packs, this.el.hand, this.el.wavebar, this.el.side, this.el.toasts, this.el.banner, this.el.modal, this.el.tip);
 
     // Top-right controls.
     const speedBtns = [1, 2, 3].map((s) => h('button', { class: 'btn grey', on: { click: () => { this.speed = s; } } }, `${s}x`));
     this.el.tr.append(
       ...speedBtns,
-      h('button', { class: 'btn grey', title: 'Pause (P / Esc)', on: { click: () => this.togglePause() } }, 'II'),
+      h('button', { class: 'btn grey', on: { click: () => this.togglePause() } }, 'II'),
     );
     this.keys.speed = '';
     (this.el.tr as HTMLElement & { speedBtns?: HTMLElement[] }).speedBtns = speedBtns;
 
     // Build bar.
     TOWERS.forEach((t, i) => {
-      const btn = h('div', { class: 'tbtn', style: tone(BUILD_COLORS[i]), title: `${t.name}: ${t.blurb} [${t.hotkey}]`, on: { click: () => this.startPlacing(t) } },
+      const btn = h('div', { class: 'tbtn', style: tone(BUILD_COLORS[i]), on: { click: () => this.startPlacing(t) } },
         h('span', { class: 'key' }, t.hotkey),
-        towerIcon(t.id, 1, 50),
-        h('div', null, t.name),
-        h('div', { class: 'cost' }, `${t.cost}`),
+        towerIcon(t.id, 1, 44, undefined, 0, 1.35),
+        h('div', { class: 'lbl' }, h('span', { class: 'nm' }, t.name), h('span', { class: 'cost' }, `${t.cost}`)),
       );
       btn.dataset.id = t.id;
       this.el.build.append(btn);
@@ -368,7 +388,8 @@ export class Game {
     const w = this.w;
     // Top-left stats.
     const dim = dimensionOf(Math.max(1, w.waveN || 1));
-    mount(this.el.tl,
+    const hud = `${w.lives}:${fmtNum(w.gold)}:${w.waveN}:${w.totalWaves}:${w.endless}`;
+    if (hud !== this.hudKey) this.hudKey = hud, mount(this.el.tl,
       h('div', { class: 'pill lives', title: 'Lives' }, h('span', { class: 'ico' }), String(w.lives)),
       h('div', { class: 'pill gold', title: 'Gold' }, h('span', { class: 'ico' }), fmtNum(w.gold)),
       h('div', { class: 'pill wave', title: 'Wave' }, h('span', { class: 'ico' }), `Wave ${w.waveN}/${w.totalWaves}${w.endless ? '+' : ''}`,
@@ -383,7 +404,7 @@ export class Game {
     this.refreshHand();
     this.refreshWavebar();
     this.refreshSide();
-    this.refreshHint();
+    this.tut?.update();
   }
 
   // ------------------------------------------------------------ packs
@@ -397,14 +418,14 @@ export class Game {
     for (const p of w.packs) counts.set(p.type, [...(counts.get(p.type) ?? []), p]);
     const stacks = [...counts.entries()].map(([type, list]) => {
       const def = PACK_BY_ID.get(type as PackInst['type'])!;
-      return h('div', { class: 'packstack', title: `${def.name}: ${def.blurb} Click to open.`, on: { click: () => { this.d.audio.unlock(); this.openPackModal(list[0]); } } },
+      return h('div', { class: 'packstack', title: def.name, on: { click: () => { this.d.audio.unlock(); this.openPackModal(list[0]); } } },
         drawPackArt(def, 44, 60),
         list.length > 1 ? h('span', { class: 'count' }, `x${list.length}`) : null,
       );
     });
     mount(this.el.packs,
       ...stacks,
-      h('button', { class: 'btn gold shopbtn', title: 'Buy card packs with gold', on: { click: () => this.openShop() } }, 'Shop'),
+      h('button', { class: 'btn gold shopbtn', on: { click: () => this.openShop() } }, 'Shop'),
     );
   }
 
@@ -421,7 +442,6 @@ export class Game {
       setTimeout(() => this.d.audio.play(best >= 3 ? 'fanfare' : 'chime', 1 + best * 0.12), 300);
       mount(this.el.modal, h('div', { class: 'modal-bg' }, h('div', { class: 'modal' },
         h('h1', null, def.name),
-        h('div', { class: 'subtitle' }, 'These cards are now in your hand.'),
         h('div', { class: 'draft reveal' }, ...cards.map((c, i) => this.bigCard(c, i))),
         h('div', { class: 'foot' },
           this.w.packs.length ? h('button', { class: 'btn blue', on: { click: () => this.openPackModal(this.w.packs[0]) } }, `Open next (${this.w.packs.length})`) : null,
@@ -455,7 +475,7 @@ export class Game {
       const w = this.w;
       mount(this.el.modal, h('div', { class: 'modal-bg', on: { click: (e: MouseEvent) => { if (e.target === e.currentTarget) this.closeModal(); } } }, h('div', { class: 'modal' },
         h('h1', null, 'Card Shop'),
-        h('div', { class: 'subtitle' }, `You have ${fmtNum(w.gold)} gold. Packs get pricier as the waves climb, and so do the odds.`),
+        h('div', { class: 'subtitle' }, `${fmtNum(w.gold)} gold`),
         h('div', { class: 'draft' }, ...PACKS.filter((p) => p.price).map((def) => {
           const price = w.packPrice(def.id)!;
           return h('div', { class: 'col', style: { alignItems: 'center', width: '200px' } },
@@ -470,7 +490,6 @@ export class Game {
             } } }, `Buy ${price}g`),
           );
         })),
-        h('div', { class: 'subtitle', style: { marginTop: '12px' } }, `Tip: right-click a card in your hand to scrap it (${SCRAP_VALUE.join(' / ')} gold by rarity).`),
         h('div', { class: 'foot' }, h('button', { class: 'btn green', on: { click: () => this.closeModal() } }, 'Close')),
       )));
     };
@@ -556,7 +575,6 @@ export class Game {
       h('div', { class: 'row' }, h('span', { class: 'badge', style: { background: rar.color } }, `${rar.name} ×${rar.mult}`), h('span', { class: 'badge' }, FAMILIES[p.family])),
       h('div', { class: 'info-card' }, p.blurb),
       h('div', { class: 'flavor' }, p.spec.flavor),
-      h('div', { class: 'small o muted' }, `Click: socket into the selected tower · Right-click: scrap for ${SCRAP_VALUE[c.rarity]} gold`),
     );
     const r = anchor.getBoundingClientRect();
     this.el.tip.classList.remove('hidden');
@@ -570,7 +588,7 @@ export class Game {
     if (key === this.handKey) return;
     this.handKey = key;
     if (!w.cards.length) {
-      mount(this.el.hand, h('div', { class: 'empty' }, 'Open card packs (left) to get power cards. Select a tower, then click a card to socket it.'));
+      clear(this.el.hand);
       return;
     }
     const sorted = [...w.cards].sort((a, b) => b.rarity - a.rarity || a.power.localeCompare(b.power));
@@ -580,7 +598,6 @@ export class Game {
       else {
         this.armed = this.armed === c.uid ? null : c.uid;
         this.placing = null;
-        if (this.armed !== null) this.toast('Now click a tower to socket this card', 'info');
       }
     }, this.armed === c.uid ? 'armed' : '')));
   }
@@ -595,7 +612,7 @@ export class Game {
     const alive = cur ? cur.alive : 0;
     const left = cur ? total - spawned + alive : 0;
     const frac = cur && total ? 1 - left / Math.max(1, total) : w.waveN ? 1 : 0;
-    let label = w.phase === 'build' ? 'Build your defence, then send the first wave' : cur ? `Wave ${w.waveN} · ${left} shapes left` : `Wave ${w.waveN} cleared`;
+    let label = w.phase === 'build' ? 'Ready' : cur ? `Wave ${w.waveN} · ${left} shapes left` : `Wave ${w.waveN} cleared`;
     if (w.enemies.length && !cur) label = `${w.enemies.length} shapes on the field`;
     let btnText = '';
     let enabled = true;
@@ -653,7 +670,8 @@ export class Game {
     if (key === this.sideKey) return;
     this.sideKey = key;
     if (!t) {
-      mount(this.el.side, this.placing ? this.towerInfo(this.placing) : this.helpPanel());
+      if (this.placing) mount(this.el.side, this.towerInfo(this.placing));
+      else clear(this.el.side);
       return;
     }
     const rt = t.rt;
@@ -666,7 +684,7 @@ export class Game {
     // Fusion / power info.
     const info: (HTMLElement | null)[] = [];
     if (!rt) {
-      info.push(h('div', { class: 'info-card' }, t.def.blurb), h('div', { class: 'info-card muted' }, 'No powers socketed. Select a power card below to give this tower a new behaviour.'));
+      info.push(h('div', { class: 'info-card' }, t.def.blurb));
     } else {
       const lines = describeSpec(rt.spec, { potency: rt.potency, dmgBase: t.stats.damage });
       const title = t.sockets.length === 1 ? POWER_BY_ID.get(t.sockets[0])!.name : rt.spec.name;
@@ -686,9 +704,9 @@ export class Game {
       if (c) {
         const p = POWER_BY_ID.get(c.power)!;
         const last = i === t.cards.length - 1;
-        return h('div', { class: 'socket filled', style: tone(p.color, RARITIES[c.rarity].color), title: last ? 'Click to remove (the card returns to your hand)' : p.blurb, on: { click: () => { if (last) this.unsocket(t); } } },
+        return h('div', { class: `socket filled ${last ? 'removable' : ''}`, style: tone(p.color, RARITIES[c.rarity].color), on: { click: () => { if (last) this.unsocket(t); } } },
           h('span', { class: 'role' }, SOCKET_ROLE[i]), h('span', { style: { fontSize: '16px' } }, p.icon), h('span', null, p.name),
-          last ? h('span', { class: 'role' }, 'click to remove') : null);
+          last ? h('span', { class: 'x' }, '×') : null);
       }
       const locked = t.tier < i + 1;
       const next = i === t.cards.length;
@@ -709,7 +727,7 @@ export class Game {
         block ? h('div', { class: 'small o', style: { color: '#ff8e8e' } }, block) : null,
         t.sockets.length === 0 ? h('div', { class: 'info-card' }, POWER_BY_ID.get(hc.power)!.blurb)
           : known ? h('div', { class: 'col' }, h('div', { class: 'fusion-name' }, known.name), h('div', { class: 'flavor' }, known.flavor), h('div', { class: 'info-card' }, known.concept))
-            : h('div', { class: 'info-card' }, '??? An undiscovered fusion. Socket it to forge something new. If nobody has made it before, it becomes a world first.'),
+            : h('div', { class: 'info-card' }, '???'),
       );
     }
     const s = t.stats;
@@ -731,7 +749,7 @@ export class Game {
     );
     mount(this.el.side,
       h('div', { class: 'panel' }, header, ...info),
-      h('div', { class: 'panel' }, h('h3', null, 'Sockets'), sockets, h('div', { class: 'small o muted' }, 'Order matters: the base power leads, the tertiary adds a twist.')),
+      h('div', { class: 'panel' }, h('h3', null, 'Sockets'), sockets),
       preview,
       h('div', { class: 'panel' }, stats, targets, actions),
     );
@@ -750,41 +768,7 @@ export class Game {
         h('span', null, 'Cost'), h('span', null, `${def.cost} → +${def.upgradeCost[0]} → +${def.upgradeCost[1]}`),
         h('span', null, 'Hits flyers'), h('span', null, def.hitsAir ? 'yes' : 'no'),
       ),
-      h('div', { class: 'small o muted' }, 'Click an empty tile to build. Shift+click to keep building. Right-click / Esc to cancel.'),
     );
-  }
-
-  private helpPanel(): HTMLElement {
-    return h('div', { class: 'panel info-card' },
-      h('h3', null, 'How to play'),
-      h('div', null, 'Build towers from the left (keys 1-0). Shapes walk the road toward your blue base; each one that escapes costs lives.'),
-      h('div', null, 'Every 3 waves (and after each boss) you earn a card pack; you can also buy packs in the Shop. Select a tower and click a card to socket it. Upgrading a tower opens more sockets.'),
-      h('div', null, 'Two or three powers in a tower FUSE into a brand-new ability designed by the Forge AI. The first player to make a combination gets a world first, and the fusion is shared with everyone after that.'),
-      h('div', { class: 'small muted' }, 'Space: send wave · U: upgrade · S: sell · T: targeting · F: speed · Backspace: remove last card · Esc: cancel / pause'),
-      h('div', { class: 'small muted' }, `Your codex: ${this.d.codex.size} fusions · Forge: ${this.d.forge.online ? `online (${this.d.forge.model})` : 'offline, using offline fusions'}`),
-    );
-  }
-
-  private refreshHint(): void {
-    if (this.d.settings.tutorialDone) {
-      this.el.hint.classList.add('hidden');
-      return;
-    }
-    const w = this.w;
-    let hint = '';
-    if (w.packs.length && !w.cards.length && !w.towers.some((t) => t.sockets.length)) hint = 'Open your Starter Pack (bottom left) to get your first power cards. Rarer cards (blue, purple, gold) are stronger.';
-    else if (!w.towers.length) hint = 'Build a tower: pick one on the left (or press 1) and click an empty grey tile next to the road.';
-    else if (w.waveN === 0) hint = 'Press Space (or the green button) to send the first wave of shapes.';
-    else if (w.cards.length && !w.towers.some((t) => t.sockets.length)) hint = 'Select a tower, then click a power card at the bottom to socket it.';
-    else if (!w.towers.some((t) => t.tier >= 2) && w.towers.some((t) => t.sockets.length)) hint = 'Upgrade a tower (U) to open its second socket. Two powers in one tower fuse into a brand-new AI-forged ability.';
-    else if (w.towers.some((t) => t.sockets.length >= 2)) {
-      this.d.settings.tutorialDone = true;
-      saveSettings(this.d.settings);
-    }
-    if (hint === this.hintKey) return;
-    this.hintKey = hint;
-    this.el.hint.classList.toggle('hidden', !hint);
-    this.el.hint.textContent = hint;
   }
 
   // ------------------------------------------------------------ modals & messages
@@ -829,7 +813,6 @@ export class Game {
           h('button', { class: 'btn gold', on: { click: () => { if (confirm('Restart this map? Your current run will be lost.')) { clearRun(); this.d.restart(); } } } }, 'Restart'),
           h('button', { class: 'btn red', on: { click: () => { this.autosave(); this.d.exit('maps'); } } }, 'Quit to map select'),
         ),
-        h('div', { class: 'subtitle', style: { marginTop: '10px' } }, 'Your run is saved between waves.'),
       )));
       return;
     }
@@ -840,6 +823,20 @@ export class Game {
     this.ended = true;
     const w = this.w;
     const won = w.phase === 'victory';
+    if (this.tut) {
+      this.tut.destroy();
+      if (won) this.d.tutorial?.done();
+      this.d.audio.play(won ? 'fanfare' : 'boom', won ? 1 : 0.6);
+      mount(this.el.modal, h('div', { class: 'modal-bg' }, h('div', { class: 'modal', style: { minWidth: '360px', textAlign: 'center' } },
+        h('h1', { style: { color: won ? '#85e37d' : '#f14e54' } }, won ? 'Tutorial complete!' : 'Defeat'),
+        h('div', { class: 'foot' },
+          won ? h('button', { class: 'btn green big', on: { click: () => this.d.exit('maps') } }, 'Start the campaign')
+            : h('button', { class: 'btn green', on: { click: () => this.d.restart() } }, 'Try again'),
+          h('button', { class: 'btn grey', on: { click: () => this.d.exit('title') } }, 'Title'),
+        ),
+      )));
+      return;
+    }
     clearRun();
     recordRun(this.map.id, this.diff, won ? w.totalWaves : Math.max(0, w.waveN - 1), won);
     this.d.audio.play(won ? 'fanfare' : 'boom', won ? 1 : 0.6);

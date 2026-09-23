@@ -5,7 +5,7 @@ import { Audio } from './audio.ts';
 import { ForgeClient } from './forge.ts';
 import { Codex, loadSettings, saveSettings, loadProgress, loadRun, clearRun, type Settings } from './storage.ts';
 import { h, mount, clear, tone, fmtDate } from './ui/dom.ts';
-import { MAPS, MAP_BY_ID, ACTS } from '../content/maps.ts';
+import { MAPS, MAP_BY_ID, ACTS, TUTORIAL_MAP } from '../content/maps.ts';
 import { DIFFICULTIES } from '../content/rules.ts';
 import { TOWER_BY_ID, TOWERS } from '../content/towers.ts';
 import { POWER_BY_ID } from '../content/powers.ts';
@@ -175,15 +175,15 @@ class App {
     const saved = loadRun();
     this.screen(
       h('div', { class: 'logo' }, 'INFINITE TOWER'),
-      h('div', { class: 'tagline' }, 'Socket powers into towers, in order. Every combination is fused into a unique ability by an AI forge: discovered once, numbered, and shared with every player forever.'),
       h('div', { class: 'menu' },
         saved ? h('button', { class: 'btn gold', on: { click: () => this.resume() } }, `Continue: ${MAP_BY_ID.get(saved.save.map)?.name ?? '?'} · wave ${saved.save.waveN}`) : null,
+        this.settings.tutorialDone ? null : h('button', { class: 'btn green', on: { click: () => this.tutorial() } }, 'Tutorial'),
         h('button', { class: 'btn blue', on: { click: () => this.maps() } }, 'Play'),
         h('button', { class: 'btn purple', on: { click: () => this.codexScreen() } }, 'Codex'),
+        this.settings.tutorialDone ? h('button', { class: 'btn grey', on: { click: () => this.tutorial() } }, 'Tutorial') : null,
         h('button', { class: 'btn grey', on: { click: () => this.settingsScreen() } }, 'Settings'),
       ),
       stat,
-      h('div', { class: 'stat-line small muted' }, '10 towers · 40 powers · 656,000 ordered fusions · 2D, 3D and 4D enemies'),
     );
   }
 
@@ -208,7 +208,6 @@ class App {
         ),
         h('div', { class: 'acts' }, ...ACTS.map((a) => h('div', { class: 'act' },
           h('h2', null, `Act ${['I', 'II', 'III'][a.act - 1]} · ${a.name}`),
-          h('div', { class: 'blurb' }, a.blurb),
           h('div', { class: 'maps' }, ...MAPS.filter((m) => m.act === a.act).map((m) => {
             const unlocked = this.unlocked(m);
             const mp = p.maps[m.id];
@@ -216,8 +215,7 @@ class App {
             return h('div', { class: `mapcard ${this.selMap === m.id ? 'sel' : ''} ${unlocked ? '' : 'locked'}`, on: { click: () => { if (unlocked) { this.selMap = m.id; render(); } } } },
               mapPreview(m, 284),
               h('div', { class: 'row' }, h('span', { class: 'nm grow' }, m.name), h('span', { class: 'stars' }, '★'.repeat(m.difficulty) + '☆'.repeat(5 - m.difficulty))),
-              h('div', { class: 'meta' }, unlocked ? m.blurb : 'Locked: beat the previous map to unlock.'),
-              h('div', { class: 'meta' }, `${m.waves} waves · best ${mp?.best ?? 0}${wins.length ? ` · beaten on ${wins.join(', ')}` : ''}`),
+              h('div', { class: 'meta' }, unlocked ? `${m.waves} waves · best ${mp?.best ?? 0}${wins.length ? ` · beaten on ${wins.join(', ')}` : ''}` : 'Locked'),
             );
           })),
         ))),
@@ -236,6 +234,19 @@ class App {
       exit: (to) => (to === 'title' ? this.title() : this.maps()),
       restart: () => { clearRun(); this.start(mapId, diff); },
     }, map, diff, null);
+    this.game.start();
+  }
+
+  tutorial(): void {
+    this.attract.stop();
+    this.stopGame();
+    const done = () => { this.settings.tutorialDone = true; saveSettings(this.settings); };
+    this.game = new Game({
+      canvas: this.canvas, ui: this.ui, audio: this.audio, settings: this.settings, codex: this.codex, forge: this.forge,
+      exit: (to) => (to === 'title' ? this.title() : this.maps()),
+      restart: () => this.tutorial(),
+      tutorial: { done },
+    }, TUTORIAL_MAP, 'casual', null);
     this.game.start();
   }
 
@@ -271,7 +282,7 @@ class App {
       const list = this.codex.all().filter((e) => (!filterTower || e.tower === filterTower) &&
         (!q || `${e.name} ${e.powers.join(' ')} ${e.concept}`.toLowerCase().includes(q)));
       if (!list.length) {
-        mount(grid, h('div', { class: 'stat-line' }, this.codex.size ? 'No fusions match.' : 'You have not made any fusions yet. Socket two powers into one tower to forge your first.'));
+        mount(grid, h('div', { class: 'stat-line' }, this.codex.size ? 'No fusions match.' : 'No fusions yet.'));
         return;
       }
       mount(grid, ...list.slice(0, 200).map((e) => {
@@ -314,9 +325,9 @@ class App {
       this.audio.volume = s.volume;
       this.audio.enabled = s.sound;
     };
-    const toggle = (label: string, key: 'sound' | 'shake' | 'damageNumbers' | 'autoStart' | 'showRanges' | 'unlockAll' | 'tutorialDone', invert = false) =>
+    const toggle = (label: string, key: 'sound' | 'shake' | 'damageNumbers' | 'autoStart' | 'showRanges' | 'unlockAll') =>
       h('div', { class: 'setting' }, h('span', null, label),
-        h('button', { class: `btn ${(invert ? !s[key] : s[key]) ? 'green' : 'grey'}`, on: { click: () => { s[key] = !s[key]; save(); this.settingsScreen(); } } }, (invert ? !s[key] : s[key]) ? 'On' : 'Off'));
+        h('button', { class: `btn ${s[key] ? 'green' : 'grey'}`, on: { click: () => { s[key] = !s[key]; save(); this.settingsScreen(); } } }, s[key] ? 'On' : 'Off'));
     this.screen(
       h('div', { class: 'topbar', style: { width: 'min(520px, 94vw)' } }, h('button', { class: 'btn grey', on: { click: () => this.title() } }, 'Back'), h('h1', null, 'Settings')),
       h('div', { class: 'settings' },
@@ -328,7 +339,6 @@ class App {
         toggle('Always show tower ranges', 'showRanges'),
         h('div', { class: 'setting' }, h('span', null, 'Particles'), h('button', { class: 'btn grey', on: { click: () => { s.particles = s.particles === 'high' ? 'low' : 'high'; save(); this.settingsScreen(); } } }, s.particles === 'high' ? 'High' : 'Low')),
         toggle('Unlock all maps', 'unlockAll'),
-        toggle('Tutorial hints', 'tutorialDone', true),
         h('div', { class: 'setting' }, h('span', null, `Forge: ${this.forge.online ? `online (${this.forge.model})` : 'offline (offline fusions only)'}`)),
       ),
     );

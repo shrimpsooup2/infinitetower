@@ -14,9 +14,22 @@ export interface DescribeOpts {
 const r1 = (n: number) => Math.round(n * 10) / 10;
 const pctStr = (n: number) => `${Math.round(n * 100)}%`;
 
+/** Internal ids (`b_moon_shard`) as player-facing words (`Moon shard`). */
+export function nice(id: string): string {
+  const s = id.replace(/^[abc]_/, '').replace(/_+/g, ' ').trim();
+  return s ? s.charAt(0).toUpperCase() + s.slice(1) : id;
+}
+
+/** 1st, 2nd, 3rd, 4th, 11th, 22nd... */
+export function ord(n: number): string {
+  const m100 = n % 100;
+  if (m100 >= 11 && m100 <= 13) return `${n}th`;
+  return `${n}${({ 1: 'st', 2: 'nd', 3: 'rd' } as Record<number, string>)[n % 10] ?? 'th'}`;
+}
+
 function statusName(spec: FusionSpec, id: string): string {
   const s = spec.statuses?.find((x) => x.id === id);
-  return s ? s.name : id.charAt(0).toUpperCase() + id.slice(1);
+  return s ? s.name : nice(id);
 }
 
 export function describeValue(v: Value, o: DescribeOpts, spec?: FusionSpec): string {
@@ -26,7 +39,7 @@ export function describeValue(v: Value, o: DescribeOpts, spec?: FusionSpec): str
     const k = (x.dmg as number) * (o.potency ?? 1);
     return o.dmgBase ? `${pctStr(k)} dmg (${Math.round(k * o.dmgBase)})` : `${pctStr(k)} dmg`;
   }
-  if ('var' in x) return `[${x.var}]`;
+  if ('var' in x) return `[${nice(x.var as string)}]`;
   if ('stacks' in x) return `${spec ? statusName(spec, x.stacks as string) : x.stacks} stacks`;
   if ('consumed' in x) return 'stacks consumed';
   if ('stored' in x) return 'stored damage';
@@ -85,17 +98,17 @@ function trig(t: Trigger, spec: FusionSpec): string {
     case 'on_hit': return 'On hit';
     case 'on_kill': return 'On kill';
     case 'on_crit': return 'On critical hit';
-    case 'every_nth_attack': return `Every ${t.n}th attack`;
+    case 'every_nth_attack': return `Every ${ord(t.n)} attack`;
     case 'every': return `Every ${r1(t.seconds)} s (while enemies are in range)`;
-    case 'on_beat': return t.n === 1 ? 'On every beat' : `Every ${t.n}th beat (${r1(t.n * 0.5)} s)`;
+    case 'on_beat': return t.n === 1 ? 'On every beat' : `Every ${ord(t.n)} beat (${r1(t.n * 0.5)} s)`;
     case 'on_idle': return `After ${r1(t.seconds)} s idle`;
     case 'on_enemy_enters_range': return 'When an enemy enters range';
     case 'on_enemy_leaves_range': return 'When an enemy escapes range';
     case 'on_status_applied': return `When it applies ${statusName(spec, t.status)}`;
     case 'on_status_expired': return `When its ${statusName(spec, t.status)} wears off`;
     case 'on_enemy_dies_in_range': return 'When any enemy dies in range';
-    case 'on_projectile_end': return `When a ${t.projectile} lands`;
-    case 'on_var_reached': return `When [${t.var}] reaches ${r1(t.value)}`;
+    case 'on_projectile_end': return `When a ${nice(t.projectile).toLowerCase()} lands`;
+    case 'on_var_reached': return `When [${nice(t.var)}] reaches ${r1(t.value)}`;
     case 'on_wave_start': return 'At wave start';
     case 'on_wave_end': return 'When a wave is cleared';
     case 'on_ally_hit': return 'When a nearby tower hits';
@@ -112,12 +125,12 @@ function cond(c: Condition, spec: FusionSpec): string {
     case 'target_lacks_status': return `target lacks ${statusName(spec, c.status)}`;
     case 'target_is': return `target is ${c.trait}`;
     case 'target_is_not': return `target is not ${c.trait}`;
-    case 'var_at_least': return `[${c.var}] ≥ ${r1(c.value)}`;
-    case 'var_below': return `[${c.var}] < ${r1(c.value)}`;
+    case 'var_at_least': return `[${nice(c.var)}] ≥ ${r1(c.value)}`;
+    case 'var_below': return `[${nice(c.var)}] < ${r1(c.value)}`;
     case 'enemies_in_range_at_least': return `${c.n}+ enemies in range`;
     case 'target_distance': return `target ${c.min ?? 0}–${c.max ?? '∞'} tiles away`;
     case 'first_hit_on_target': return 'first hit on that enemy';
-    case 'every_nth': return `every ${c.n}th time`;
+    case 'every_nth': return `every ${ord(c.n)} time`;
   }
 }
 
@@ -140,20 +153,20 @@ function act(a: Action, spec: FusionSpec, o: DescribeOpts): string | null {
     case 'shrink': s = `shrink ${sel(a.to, spec)} (HP ×${r1(a.hp_mult)}, speed ×${r1(a.speed_mult)})`; break;
     case 'fire_projectile': {
       const p = spec.projectiles?.find((x) => x.id === a.projectile);
-      const what = p ? `${p.id} (${p.motion.replace('_', ' ')}, ${v(p.amount)}${p.splash ? `, ${r1(p.splash)}-tile blast` : ''}${p.pierce ? `, pierces ${p.pierce}` : ''})` : 'a homing bullet (50% dmg)';
+      const what = p ? `${nice(p.id).toLowerCase()} (${p.motion.replace('_', ' ')}, ${v(p.amount)}${p.splash ? `, ${r1(p.splash)}-tile blast` : ''}${p.pierce ? `, pierces ${p.pierce}` : ''})` : 'a homing bullet (50% dmg)';
       s = `fire ${(a.count ?? 1) > 1 ? a.count + '× ' : ''}${what}${a.from && a.from !== 'self' ? ` from ${pt(a.from)}` : ''}${a.aim && a.aim !== 'target' ? ` aimed ${a.aim.replace('_', ' ')}` : ''}`;
       break;
     }
     case 'create_zone': {
       const z = spec.zones?.find((x) => x.id === a.zone);
-      s = `create ${z ? `a ${r1(z.radius)}-tile ${z.shape.replace('_', ' ')} zone for ${r1(z.duration)} s${z.speed_mult && z.speed_mult !== 1 ? ` (speed ×${r1(z.speed_mult)})` : ''}` : a.zone} at ${pt(a.at)}`;
+      s = `create ${z ? `a ${r1(z.radius)}-tile ${z.shape.replace('_', ' ')} zone for ${r1(z.duration)} s${z.speed_mult && z.speed_mult !== 1 ? ` (speed ×${r1(z.speed_mult)})` : ''}` : nice(a.zone).toLowerCase()} at ${pt(a.at)}`;
       break;
     }
     case 'summon_drone': s = `summon ${a.count} drone${a.count > 1 ? 's' : ''} for ${r1(a.lifetime)} s (${v(a.damage)} per sting)`; break;
     case 'repeat_attack': s = `repeat its attack at ${pctStr(a.mult)} power`; break;
     case 'modify_tower': s = `${tsel(a.to)} get ${a.stat} ×${r1(a.mult)} for ${r1(a.duration)} s`; break;
-    case 'set_var': s = `set [${a.var}] to ${v(a.value)}`; break;
-    case 'add_var': s = `add ${v(a.amount)} to [${a.var}]`; break;
+    case 'set_var': s = `set [${nice(a.var)}] to ${v(a.value)}`; break;
+    case 'add_var': s = `add ${v(a.amount)} to [${nice(a.var)}]`; break;
     case 'grant_gold': s = `gain ${a.amount} gold`; break;
     case 'restore_life': s = 'restore 1 life'; break;
     case 'reveal': s = `reveal ${sel(a.to, spec)} for ${r1(a.duration)} s`; break;
@@ -230,13 +243,13 @@ export function describeSpec(spec: FusionSpec, o: DescribeOpts = {}): string[] {
     if (z.tick) bits.push(`every ${r1(z.tick.every)} s: ${acts(z.tick.do, spec, o)}`);
     if (z.on_enter) bits.push(`on enter: ${acts(z.on_enter, spec, o)}`);
     if (z.damage_taken_mult && z.damage_taken_mult !== 1) bits.push(`damage taken ×${r1(z.damage_taken_mult)}`);
-    if (bits.length) lines.push(`Zone ${z.id}: ${bits.join('; ')}.`);
+    if (bits.length) lines.push(`${nice(z.id)} zone: ${bits.join('; ')}.`);
   }
   for (const p of spec.projectiles ?? []) {
     const bits: string[] = [];
     if (p.on_hit) bits.push(`on hit: ${acts(p.on_hit, spec, o)}`);
     if (p.on_end) bits.push(`when it ends: ${acts(p.on_end, spec, o)}`);
-    if (bits.length) lines.push(`${p.id}: ${bits.join('; ')}.`);
+    if (bits.length) lines.push(`${nice(p.id)}: ${bits.join('; ')}.`);
   }
   return lines;
 }

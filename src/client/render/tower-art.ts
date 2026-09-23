@@ -249,14 +249,14 @@ export function drawTower(ctx: Ctx2D, a: TowerArt): void {
 }
 
 /** Draw a tower onto a small standalone canvas (UI icons). */
-export function towerIcon(def: string, tier: number, size: number, colors?: Palette3, sockets = 0): HTMLCanvasElement {
+export function towerIcon(def: string, tier: number, size: number, colors?: Palette3, sockets = 0, zoom = 1): HTMLCanvasElement {
   const c = document.createElement('canvas');
   const dpr = Math.min(2, window.devicePixelRatio || 1);
   c.width = c.height = Math.round(size * dpr);
   c.style.width = c.style.height = `${size}px`;
   const ctx = c.getContext('2d')!;
   ctx.scale(dpr, dpr);
-  const R = size * 0.2;
+  const R = size * 0.2 * zoom;
   drawTower(ctx, {
     def, tier, x: size / 2, y: size / 2 + R * 0.25, R, angle: -Math.PI / 2 - 0.5, colors: colors ?? { base: PAL.blue, secondary: PAL.blue, tertiary: PAL.blue },
     sockets, time: 0.6, lw: Math.max(1.5, size * 0.035),

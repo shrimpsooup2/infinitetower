@@ -95,3 +95,12 @@ export const MAPS: MapDef[] = [
 ];
 
 export const MAP_BY_ID = new Map(MAPS.map((m) => [m.id, m]));
+
+/** The guided tutorial: a short, forgiving map that is not part of the campaign. */
+export const TUTORIAL_MAP: MapDef = {
+  id: 'tutorial', name: 'Tutorial', blurb: '', act: 1, waves: 6,
+  cols: 24, rows: 14, seed: 42, difficulty: 1, hpScale: 0.55, pathMode: 'first',
+  paths: [[[-1, 7], [7, 7], [7, 3], [16, 3], [16, 10], [24, 10]]],
+  air: [[[-1, 2], [24, 12]]],
+  blocked: [[3, 3], [11, 7], [12, 7], [20, 5], [4, 11]],
+};

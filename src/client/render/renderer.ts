@@ -36,6 +36,8 @@ export interface RenderOpts {
   placing: TowerDef | null;
   showRanges: boolean;
   damageNumbers: boolean;
+  /** Tile (in tile units, centre) the tutorial is pointing at. */
+  beacon?: [number, number] | null;
 }
 
 const DEFAULT_SPRAY = {
@@ -361,7 +363,24 @@ export class Renderer {
     for (const e of w.enemies) this.drawBars(e, lerp(e.px, e.x), lerp(e.py, e.y));
 
     if (opts.placing && opts.hoverTile) this.drawPlacement(w, opts.placing, opts.hoverTile);
+    if (opts.beacon) this.drawBeacon(opts.beacon[0], opts.beacon[1]);
     this.drawBossBar(w);
+  }
+
+  /** Pulsing rings the tutorial uses to point at something on the map. */
+  private drawBeacon(x: number, y: number): void {
+    const ctx = this.ctx, cam = this.cam;
+    const cx = cam.ox + x * cam.s, cy = cam.oy + y * cam.s;
+    for (let i = 0; i < 2; i++) {
+      const k = (this.time * 0.9 + i * 0.5) % 1;
+      ctx.globalAlpha = 1 - k;
+      ctx.strokeStyle = '#ffe869';
+      ctx.lineWidth = Math.max(2, cam.s * 0.08);
+      ctx.beginPath();
+      ctx.arc(cx, cy, cam.s * (0.55 + k * 0.7), 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
   }
 
   // ------------------------------------------------------------ pieces
