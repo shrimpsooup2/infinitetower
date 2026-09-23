@@ -349,7 +349,7 @@ export class Renderer {
       const k = g.age / g.dur;
       ctx.globalAlpha = 1 - k;
       const gx = cam.ox + g.x * cam.s, gy = cam.oy + (g.y - (g.air ? 0.18 : 0)) * cam.s, gr = g.r * cam.s * (1 + k * 0.6);
-      if (g.enemy) drawEnemyBody(ctx, g.enemy.def, gx, gy, gr, g.rot, this.time + g.enemy.id, g.color, Math.max(1.2, cam.s * 0.05));
+      if (g.enemy) drawEnemyBody(ctx, g.enemy.def, gx, gy, gr, g.rot, this.time + g.enemy.id, g.color, Math.max(1.2, cam.s * 0.05), this.artPixel());
       else {
         shapePath(ctx, g.shape, gx, gy, gr, g.rot);
         fillStroke(ctx, g.color, Math.max(1.2, cam.s * 0.05));
@@ -365,6 +365,11 @@ export class Renderer {
     if (opts.placing && opts.hoverTile) this.drawPlacement(w, opts.placing, opts.hoverTile);
     if (opts.beacon) this.drawBeacon(opts.beacon[0], opts.beacon[1]);
     this.drawBossBar(w);
+  }
+
+  /** Size of one art pixel for the pixelated 3D solids, in CSS px. */
+  private artPixel(): number {
+    return Math.max(2, Math.round(this.cam.s / 14));
   }
 
   /** Pulsing rings the tutorial uses to point at something on the map. */
@@ -646,7 +651,9 @@ export class Renderer {
 
   private drawEnemy(w: World, e: Enemy, wx: number, wy: number, dt: number): void {
     const ctx = this.ctx, cam = this.cam;
-    const hover = e.air ? 0.18 + Math.sin(this.time * 3 + e.id) * 0.03 : 0;
+    // Flyers hover; 3D solids float and bob above their shadow.
+    const solid = e.def.dim === 3;
+    const hover = e.air ? 0.18 + Math.sin(this.time * 3 + e.id) * 0.03 : solid ? 0.2 + Math.sin(this.time * 2.3 + e.id * 1.7) * 0.06 : 0;
     const x = cam.ox + wx * cam.s, y = cam.oy + (wy - hover) * cam.s;
     const r = e.size * e.visScale * cam.s;
     const lw = Math.max(1.5, cam.s * 0.055);
@@ -654,10 +661,11 @@ export class Renderer {
     let alpha = 1;
     if (stealthed) alpha = 0.28;
     if (e.burrowed) alpha = 0.3;
-    if (e.air) {
+    if (hover > 0) {
+      const k = 1 - hover * 0.9;
       ctx.beginPath();
-      ctx.ellipse(cam.ox + wx * cam.s, cam.oy + (wy + 0.08) * cam.s, r * 0.9, r * 0.5, 0, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(0,0,0,0.13)';
+      ctx.ellipse(cam.ox + wx * cam.s, cam.oy + (wy + 0.08) * cam.s, r * 0.95 * k, r * 0.42 * k, 0, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(0,0,0,${(0.2 * k * alpha).toFixed(3)})`;
       ctx.fill();
     }
     // Status looks (under the body).
@@ -706,7 +714,7 @@ export class Renderer {
       ctx.globalCompositeOperation = 'source-over';
     }
     ctx.globalAlpha = alpha;
-    drawEnemyBody(ctx, e.def, x, y, r, e.rot, this.time * (e.hardCC ? 0 : 1) + e.id, fill, lw);
+    drawEnemyBody(ctx, e.def, x, y, r, e.rot, this.time * (e.hardCC ? 0 : 1) + e.id, fill, lw, this.artPixel());
     // Wings for flying shapes.
     if (e.air && e.def.dim === 2) {
       for (const sgn of [-1, 1]) {
@@ -836,7 +844,7 @@ export class Renderer {
     const stealthed = e.traitSet.has('stealth') && e.revealedUntil <= 0;
     const damaged = e.hp < e.maxHp - 0.5;
     const hasShield = e.maxShield > 0;
-    const x = cam.ox + wx * cam.s, y = cam.oy + (wy + e.size * e.visScale + 0.2 - (e.air ? 0.18 : 0)) * cam.s;
+    const x = cam.ox + wx * cam.s, y = cam.oy + (wy + e.size * e.visScale + 0.2 - (e.air ? 0.18 : e.def.dim === 3 ? 0.12 : 0)) * cam.s;
     const bw = Math.max(0.55, e.size * 2.3) * cam.s, bh = Math.max(3, cam.s * 0.09);
     if ((damaged || (hasShield && e.shield < e.maxShield)) && !stealthed) {
       roundRectPath(ctx, x - bw / 2 - 1.5, y - bh / 2 - 1.5, bw + 3, bh + 3, bh);

@@ -70,7 +70,7 @@ class Attract {
       s.y = (s.y + s.vy * dt + 1.1) % 1.1;
       s.rot += dt * 0.3;
       s.t += dt;
-      drawEnemyBody(g, s.def, (s.x - 0.05) * W, (s.y - 0.05) * H, s.r, s.rot, s.t, s.def.color, 3);
+      drawEnemyBody(g, s.def, (s.x - 0.05) * W, (s.y - 0.05) * H, s.r, s.rot, s.t, s.def.color, 3, 3);
     }
   }
 }

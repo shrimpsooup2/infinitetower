@@ -1,20 +1,31 @@
 // 3D polyhedra and 4D polytopes for the renderer. Vertices come from their
 // textbook coordinates (signed / even permutations with the golden ratio);
 // edges are the vertex pairs at minimum distance (true for uniform shapes).
-// Shapes are rotated (4D ones through the 4th axis too), projected, and
-// drawn diep-style: a filled silhouette plus front/back edges.
+// 4D shapes are rotated through the 4th axis, projected and drawn as
+// wireframes. 3D solids break from the flat style on purpose: they get real
+// faces (a convex hull pass), flat lighting in a few colour bands, and are
+// meant to be drawn on a low-resolution buffer so they read as pixel art.
 
-import { shade } from '../../content/colors.ts';
+import { mix, shade } from '../../content/colors.ts';
 import type { Ctx2D } from './draw.ts';
 
 const PHI = (1 + Math.sqrt(5)) / 2;
 
 type Vec = number[];
 
+export interface Face {
+  /** Vertex indices in winding order. */
+  v: number[];
+  /** Outward unit normal. */
+  n: Vec;
+}
+
 export interface Model {
   dim: 3 | 4;
   verts: Vec[];
   edges: [number, number][];
+  /** Faces of a 3D convex solid. */
+  faces: Face[];
 }
 
 function permutations(a: number[], evenOnly: boolean): number[][] {
@@ -82,9 +93,52 @@ function minEdges(verts: Vec[], tol = 1.02): [number, number][] {
   return edges;
 }
 
+const dot = (a: Vec, b: Vec) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+const sub = (a: Vec, b: Vec) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+const cross = (a: Vec, b: Vec) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+
+/** Faces of a convex solid centred on the origin: every supporting plane through 3+ vertices. */
+export function hullFaces(v: Vec[]): Face[] {
+  const faces: Face[] = [];
+  const seen = new Set<string>();
+  const n = v.length;
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) {
+      for (let k = j + 1; k < n; k++) {
+        let nm = cross(sub(v[j], v[i]), sub(v[k], v[i]));
+        const len = Math.hypot(nm[0], nm[1], nm[2]);
+        if (len < 1e-9) continue;
+        nm = nm.map((x) => x / len);
+        let d = dot(nm, v[i]);
+        if (d < 0) { nm = nm.map((x) => -x); d = -d; }
+        if (d < 1e-6) continue;
+        let ok = true;
+        for (let q = 0; q < n && ok; q++) if (dot(nm, v[q]) > d + 1e-6) ok = false;
+        if (!ok) continue;
+        const on = [...Array(n).keys()].filter((q) => Math.abs(dot(nm, v[q]) - d) < 1e-4);
+        const key = on.join(',');
+        if (seen.has(key)) continue;
+        seen.add(key);
+        // Order around the centroid, counter-clockwise seen from outside.
+        const c = [0, 1, 2].map((a) => on.reduce((s, q) => s + v[q][a], 0) / on.length);
+        const u = sub(v[on[0]], c);
+        const ul = Math.hypot(u[0], u[1], u[2]);
+        const U = u.map((x) => x / ul);
+        const V = cross(nm, U);
+        on.sort((a, b) => {
+          const pa = sub(v[a], c), pb = sub(v[b], c);
+          return Math.atan2(dot(pa, V), dot(pa, U)) - Math.atan2(dot(pb, V), dot(pb, U));
+        });
+        faces.push({ v: on, n: nm });
+      }
+    }
+  }
+  return faces;
+}
+
 function model(dim: 3 | 4, verts: Vec[], tol = 1.02): Model {
   const v = normalize(verts);
-  return { dim, verts: v, edges: minEdges(v, tol) };
+  return { dim, verts: v, edges: minEdges(v, tol), faces: dim === 3 ? hullFaces(v) : [] };
 }
 
 function prism(n: number): Vec[] {
@@ -240,6 +294,105 @@ export function drawModel(ctx: Ctx2D, m: Model, x: number, y: number, r: number,
   ctx.strokeStyle = shade(color, 0.72);
   ctx.lineWidth = lw;
   ctx.stroke();
+}
+
+// ------------------------------------------------------------ shaded solids
+
+/** Light from the upper left, slightly toward the viewer (view space, +z out of the screen). */
+const LIGHT = (() => { const l = [-0.45, -0.65, 0.62]; const m = Math.hypot(...l); return l.map((x) => x / m); })();
+const BANDS = 6;
+const bandCache = new Map<string, string[]>();
+
+/** A colour ramp from shadow to highlight, in a few flat bands. */
+function ramp(color: string): string[] {
+  let r = bandCache.get(color);
+  if (!r) {
+    r = [];
+    for (let i = 0; i < BANDS; i++) {
+      const k = i / (BANDS - 1);
+      r.push(k < 0.6 ? mix(shade(color, 0.38), color, k / 0.6) : mix(color, '#ffffff', ((k - 0.6) / 0.4) * 0.55));
+    }
+    if (bandCache.size > 400) bandCache.clear();
+    bandCache.set(color, r);
+  }
+  return r;
+}
+
+/**
+ * A flat-shaded, tumbling 3D solid. Meant for a low-resolution buffer (see
+ * enemy-art), where the bands and the 1-pixel outline turn it into pixel art.
+ */
+export function drawSolid(ctx: Ctx2D, m: Model, x: number, y: number, r: number, t: number, color: string, outline = 1): void {
+  const ay = t * 0.9, ax = t * 0.53 + 0.6, az = Math.sin(t * 0.37) * 0.5;
+  const cy = Math.cos(ay), sy = Math.sin(ay), cx = Math.cos(ax), sx = Math.sin(ax), cz = Math.cos(az), sz = Math.sin(az);
+  const rot = (v: Vec): Vec => {
+    const x1 = v[0] * cy + v[2] * sy, z1 = -v[0] * sy + v[2] * cy;
+    const y1 = v[1] * cx - z1 * sx, z2 = v[1] * sx + z1 * cx;
+    return [x1 * cz - y1 * sz, x1 * sz + y1 * cz, z2];
+  };
+  const P = m.verts.map((v) => {
+    const q = rot(v);
+    const k = 3.4 / (3.4 - q[2]);
+    return [x + q[0] * r * k, y + q[1] * r * k, q[2]];
+  });
+  const cols = ramp(color);
+  ctx.lineJoin = 'round';
+  // Convex solid: back-face culling is all the sorting it needs.
+  for (const f of m.faces) {
+    const n = rot(f.n);
+    if (n[2] <= 0.02) continue;
+    const lit = 0.18 + 0.82 * Math.max(0, dot(n, LIGHT));
+    const c = cols[Math.min(BANDS - 1, Math.floor(lit * BANDS))];
+    ctx.beginPath();
+    f.v.forEach((i, j) => (j ? ctx.lineTo(P[i][0], P[i][1]) : ctx.moveTo(P[i][0], P[i][1])));
+    ctx.closePath();
+    ctx.fillStyle = c;
+    ctx.fill();
+    ctx.strokeStyle = c;
+    ctx.lineWidth = 0.6;
+    ctx.stroke();
+  }
+  if (outline > 0) {
+    const h = hull(P);
+    ctx.beginPath();
+    h.forEach((p, i) => (i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])));
+    ctx.closePath();
+    ctx.strokeStyle = shade(color, 0.3);
+    ctx.lineWidth = outline;
+    ctx.stroke();
+  }
+}
+
+/** The Sphere boss in the same shaded style: a lit ball with drifting bands. */
+export function drawShadedSphere(ctx: Ctx2D, x: number, y: number, r: number, t: number, color: string, outline = 1): void {
+  const cols = ramp(color);
+  const g = ctx.createRadialGradient(x - r * 0.38, y - r * 0.42, r * 0.05, x, y, r);
+  g.addColorStop(0, cols[BANDS - 1]);
+  g.addColorStop(0.45, cols[3]);
+  g.addColorStop(1, cols[0]);
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.fillStyle = g;
+  ctx.fill();
+  ctx.save();
+  ctx.clip();
+  ctx.strokeStyle = cols[1];
+  ctx.globalAlpha *= 0.55;
+  ctx.lineWidth = Math.max(1, r * 0.12);
+  for (let i = 0; i < 3; i++) {
+    const a = t * 0.8 + (i * Math.PI) / 3;
+    ctx.beginPath();
+    ctx.ellipse(x, y, Math.abs(Math.cos(a)) * r, r, 0.35, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.restore();
+  if (outline > 0) {
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.strokeStyle = shade(color, 0.3);
+    ctx.lineWidth = outline;
+    ctx.stroke();
+  }
 }
 
 /** Smooth limits: the Sphere and the Glome (hypersphere). */
