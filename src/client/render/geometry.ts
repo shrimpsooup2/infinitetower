@@ -3,10 +3,10 @@
 // edges are the vertex pairs at minimum distance (true for uniform shapes).
 // 4D shapes are rotated through the 4th axis, projected and drawn as
 // wireframes. 3D solids break from the flat style on purpose: they get real
-// faces (a convex hull pass), flat lighting in a few colour bands, and are
-// meant to be drawn on a low-resolution buffer so they read as pixel art.
+// faces (a convex hull pass) and glossy early-2000s-render shading, drawn on a
+// slightly low-resolution buffer.
 
-import { mix, shade } from '../../content/colors.ts';
+import { shade } from '../../content/colors.ts';
 import type { Ctx2D } from './draw.ts';
 
 const PHI = (1 + Math.sqrt(5)) / 2;
@@ -297,31 +297,44 @@ export function drawModel(ctx: Ctx2D, m: Model, x: number, y: number, r: number,
 }
 
 // ------------------------------------------------------------ shaded solids
+// The look of an early-2000s render: shading that runs smoothly across each
+// face, a hard white specular hotspot, a cool fresnel rim and sky-tinted
+// upward faces. Meant for a slightly low-resolution buffer (see enemy-art).
 
-/** Light from the upper left, slightly toward the viewer (view space, +z out of the screen). */
-const LIGHT = (() => { const l = [-0.45, -0.65, 0.62]; const m = Math.hypot(...l); return l.map((x) => x / m); })();
-const BANDS = 6;
-const bandCache = new Map<string, string[]>();
+type RGB = [number, number, number];
 
-/** A colour ramp from shadow to highlight, in a few flat bands. */
-function ramp(color: string): string[] {
-  let r = bandCache.get(color);
-  if (!r) {
-    r = [];
-    for (let i = 0; i < BANDS; i++) {
-      const k = i / (BANDS - 1);
-      r.push(k < 0.6 ? mix(shade(color, 0.38), color, k / 0.6) : mix(color, '#ffffff', ((k - 0.6) / 0.4) * 0.55));
-    }
-    if (bandCache.size > 400) bandCache.clear();
-    bandCache.set(color, r);
+const unit = (v: Vec): Vec => { const m = Math.hypot(v[0], v[1], v[2]) || 1; return [v[0] / m, v[1] / m, v[2] / m]; };
+/** Key light from the upper left, toward the viewer (view space, +z out of the screen, +y down). */
+const LIGHT = unit([-0.5, -0.72, 0.75]);
+const HALF = unit([LIGHT[0], LIGHT[1], LIGHT[2] + 1]);
+const RIM: RGB = [205, 228, 255];
+const rgbCache = new Map<string, RGB>();
+
+function rgbOf(hex: string): RGB {
+  let c = rgbCache.get(hex);
+  if (!c) {
+    const n = parseInt(hex.slice(1), 16);
+    c = [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+    if (rgbCache.size > 500) rgbCache.clear();
+    rgbCache.set(hex, c);
   }
-  return r;
+  return c;
 }
 
-/**
- * A flat-shaded, tumbling 3D solid. Meant for a low-resolution buffer (see
- * enemy-art), where the bands and the 1-pixel outline turn it into pixel art.
- */
+const css = (c: RGB) => `rgb(${c[0] | 0},${c[1] | 0},${c[2] | 0})`;
+const lum = (c: RGB) => c[0] * 0.3 + c[1] * 0.59 + c[2] * 0.11;
+
+/** Lit colour of a surface with normal n. */
+function lit(base: RGB, n: Vec, shine = 18): RGB {
+  const diff = Math.max(0, dot(n, LIGHT));
+  const amb = 0.26 + 0.14 * -n[1];
+  const spec = Math.pow(Math.max(0, dot(n, HALF)), shine) * 0.75;
+  const rim = Math.pow(1 - Math.max(0, n[2]), 3) * 0.4;
+  const k = amb + 0.82 * diff;
+  return [0, 1, 2].map((i) => Math.min(255, base[i] * k + 255 * spec + RIM[i] * rim)) as RGB;
+}
+
+/** A tumbling, glossy 3D solid. */
 export function drawSolid(ctx: Ctx2D, m: Model, x: number, y: number, r: number, t: number, color: string, outline = 1): void {
   const ay = t * 0.9, ax = t * 0.53 + 0.6, az = Math.sin(t * 0.37) * 0.5;
   const cy = Math.cos(ay), sy = Math.sin(ay), cx = Math.cos(ax), sx = Math.sin(ax), cz = Math.cos(az), sz = Math.sin(az);
@@ -330,66 +343,99 @@ export function drawSolid(ctx: Ctx2D, m: Model, x: number, y: number, r: number,
     const y1 = v[1] * cx - z1 * sx, z2 = v[1] * sx + z1 * cx;
     return [x1 * cz - y1 * sz, x1 * sz + y1 * cz, z2];
   };
-  const P = m.verts.map((v) => {
-    const q = rot(v);
+  const R = m.verts.map(rot);
+  const P = R.map((q) => {
     const k = 3.4 / (3.4 - q[2]);
     return [x + q[0] * r * k, y + q[1] * r * k, q[2]];
   });
-  const cols = ramp(color);
+  const base = rgbOf(color);
   ctx.lineJoin = 'round';
   // Convex solid: back-face culling is all the sorting it needs.
   for (const f of m.faces) {
-    const n = rot(f.n);
-    if (n[2] <= 0.02) continue;
-    const lit = 0.18 + 0.82 * Math.max(0, dot(n, LIGHT));
-    const c = cols[Math.min(BANDS - 1, Math.floor(lit * BANDS))];
+    const nf = rot(f.n);
+    if (nf[2] <= 0.02) continue;
+    // Per-vertex colours from a normal bent toward the vertex, so light runs across the face.
+    const cols = f.v.map((i) => lit(base, unit([nf[0] * 0.62 + R[i][0] * 0.38, nf[1] * 0.62 + R[i][1] * 0.38, nf[2] * 0.62 + R[i][2] * 0.38])));
+    let lo = 0, hi = 0;
+    cols.forEach((c, i) => {
+      if (lum(c) < lum(cols[lo])) lo = i;
+      if (lum(c) > lum(cols[hi])) hi = i;
+    });
     ctx.beginPath();
     f.v.forEach((i, j) => (j ? ctx.lineTo(P[i][0], P[i][1]) : ctx.moveTo(P[i][0], P[i][1])));
     ctx.closePath();
-    ctx.fillStyle = c;
+    const a = P[f.v[lo]], b = P[f.v[hi]];
+    let fill: string | CanvasGradient;
+    if (lo !== hi && Math.hypot(b[0] - a[0], b[1] - a[1]) > 0.5) {
+      const g = ctx.createLinearGradient(a[0], a[1], b[0], b[1]);
+      g.addColorStop(0, css(cols[lo]));
+      g.addColorStop(1, css(cols[hi]));
+      fill = g;
+    } else fill = css(cols[hi]);
+    ctx.fillStyle = fill;
     ctx.fill();
-    ctx.strokeStyle = c;
-    ctx.lineWidth = 0.6;
+    ctx.strokeStyle = fill;
+    ctx.lineWidth = 0.7;
     ctx.stroke();
+    // Specular hotspot where the face catches the light.
+    const sf = Math.pow(Math.max(0, dot(nf, HALF)), 30);
+    if (sf > 0.03) {
+      let fx = 0, fy = 0, fr = 0;
+      for (const i of f.v) { fx += P[i][0]; fy += P[i][1]; }
+      fx /= f.v.length; fy /= f.v.length;
+      for (const i of f.v) fr = Math.max(fr, Math.hypot(P[i][0] - fx, P[i][1] - fy));
+      const hx = fx + LIGHT[0] * fr * 0.35, hy = fy + LIGHT[1] * fr * 0.35;
+      const g = ctx.createRadialGradient(hx, hy, 0, hx, hy, fr * 0.85);
+      g.addColorStop(0, `rgba(255,255,255,${Math.min(0.95, sf).toFixed(3)})`);
+      g.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = g;
+      ctx.fill();
+    }
   }
   if (outline > 0) {
     const h = hull(P);
     ctx.beginPath();
     h.forEach((p, i) => (i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])));
     ctx.closePath();
-    ctx.strokeStyle = shade(color, 0.3);
+    ctx.strokeStyle = 'rgba(25,25,40,0.45)';
     ctx.lineWidth = outline;
     ctx.stroke();
   }
 }
 
-/** The Sphere boss in the same shaded style: a lit ball with drifting bands. */
+/** The Sphere boss in the same style: a glossy ball with drifting bands. */
 export function drawShadedSphere(ctx: Ctx2D, x: number, y: number, r: number, t: number, color: string, outline = 1): void {
-  const cols = ramp(color);
-  const g = ctx.createRadialGradient(x - r * 0.38, y - r * 0.42, r * 0.05, x, y, r);
-  g.addColorStop(0, cols[BANDS - 1]);
-  g.addColorStop(0.45, cols[3]);
-  g.addColorStop(1, cols[0]);
+  const base = rgbOf(color);
+  const hx = x + LIGHT[0] * r * 0.55, hy = y + LIGHT[1] * r * 0.55;
+  const g = ctx.createRadialGradient(hx, hy, r * 0.05, x, y, r);
+  g.addColorStop(0, css(lit(base, LIGHT, 60)));
+  g.addColorStop(0.55, css(lit(base, unit([0.1, 0.1, 1]))));
+  g.addColorStop(0.9, css(lit(base, unit([0.7, 0.6, 0.35]))));
+  g.addColorStop(1, css(lit(base, unit([0.8, 0.5, 0.05]))));
   ctx.beginPath();
   ctx.arc(x, y, r, 0, Math.PI * 2);
   ctx.fillStyle = g;
   ctx.fill();
   ctx.save();
   ctx.clip();
-  ctx.strokeStyle = cols[1];
-  ctx.globalAlpha *= 0.55;
-  ctx.lineWidth = Math.max(1, r * 0.12);
+  ctx.strokeStyle = 'rgba(0,0,0,0.14)';
+  ctx.lineWidth = Math.max(1, r * 0.1);
   for (let i = 0; i < 3; i++) {
     const a = t * 0.8 + (i * Math.PI) / 3;
     ctx.beginPath();
     ctx.ellipse(x, y, Math.abs(Math.cos(a)) * r, r, 0.35, 0, Math.PI * 2);
     ctx.stroke();
   }
+  const s = ctx.createRadialGradient(hx, hy, 0, hx, hy, r * 0.38);
+  s.addColorStop(0, 'rgba(255,255,255,0.95)');
+  s.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = s;
+  ctx.fillRect(x - r, y - r, r * 2, r * 2);
   ctx.restore();
   if (outline > 0) {
     ctx.beginPath();
     ctx.arc(x, y, r, 0, Math.PI * 2);
-    ctx.strokeStyle = shade(color, 0.3);
+    ctx.strokeStyle = 'rgba(25,25,40,0.45)';
     ctx.lineWidth = outline;
     ctx.stroke();
   }

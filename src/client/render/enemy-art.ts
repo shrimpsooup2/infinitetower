@@ -1,7 +1,7 @@
 // Enemy bodies. 2D polygons stay flat (fill + outline). 3D solids break the
-// style on purpose: shaded, tumbling polyhedra drawn on a low-resolution
-// buffer and scaled up without smoothing, so they read as chunky pixel art.
-// 4D polytopes are rotating wireframe projections.
+// style on purpose: glossy, tumbling polyhedra in the manner of an early-2000s
+// render, drawn on a buffer at half resolution or so and scaled up without
+// smoothing, for a touch of aliasing. 4D polytopes are rotating wireframes.
 
 import type { EnemyDef } from '../../sim/types.ts';
 import { fillStroke, polyPath, circlePath, type Ctx2D } from './draw.ts';
@@ -10,7 +10,7 @@ import { drawModel, drawShadedSphere, drawSolid, drawSphere, getModel } from './
 let scratch: HTMLCanvasElement | null = null;
 let sctx: CanvasRenderingContext2D | null = null;
 
-/** Draw via a low-res buffer, snapped to a `px`-sized screen grid. */
+/** Draw via a lower-resolution buffer, snapped to a `px`-sized screen grid. */
 function pixelated(ctx: Ctx2D, x: number, y: number, r: number, px: number, draw: (c: Ctx2D, cx: number, cy: number, rr: number) => void): void {
   const half = Math.ceil((r * 1.4) / px) + 1;
   const n = half * 2;

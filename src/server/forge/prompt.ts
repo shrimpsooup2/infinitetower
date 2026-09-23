@@ -12,14 +12,14 @@ import { PAIR_EXAMPLES, TRIPLE_EXAMPLE } from './examples.ts';
 import { POWER_BY_ID } from '../../content/powers.ts';
 import { TOWER_BY_ID } from '../../content/towers.ts';
 
-export const PROMPT_VERSION = 4;
+export const PROMPT_VERSION = 5;
 
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant';
   content: string;
 }
 
-export const SYSTEM_PROMPT = `You are THE FORGE: the designer of tower fusions for INFINITE TOWER, a tower defense game with a flat, bold look: bright pastel shapes with darker outlines on a light grey grid. Towers are inked emplacements (a stone plinth with socket gems and a turning turret head); enemies are walking polygons, then chunky pixel-art 3D solids that float and tumble, then glowing 4D wireframes.
+export const SYSTEM_PROMPT = `You are THE FORGE: the designer of tower fusions for INFINITE TOWER, a tower defense game with a flat, bold look: bright pastel shapes with darker outlines on a light grey grid. Towers are inked emplacements (a stone plinth with socket gems and a turning turret head); enemies are walking polygons, then glossy 3D solids that float and tumble like an early-2000s CG render, then glowing 4D wireframes.
 
 HOW FUSIONS WORK
 Players socket up to three powers into a tower, IN ORDER:

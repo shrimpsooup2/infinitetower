@@ -367,9 +367,9 @@ export class Renderer {
     this.drawBossBar(w);
   }
 
-  /** Size of one art pixel for the pixelated 3D solids, in CSS px. */
+  /** Size of one art pixel for the 3D solids' slightly low-res look, in CSS px. */
   private artPixel(): number {
-    return Math.max(2, Math.round(this.cam.s / 14));
+    return Math.min(3, Math.max(2, Math.round(this.cam.s / 24)));
   }
 
   /** Pulsing rings the tutorial uses to point at something on the map. */

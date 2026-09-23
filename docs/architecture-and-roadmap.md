@@ -75,9 +75,12 @@ tools/            bot (playtest), pregen (seed the database), screenshot (Playwr
 - **3D enemies** (`geometry.ts`, `enemy-art.ts`):
   - the polyhedra are built from textbook coordinates (golden-ratio permutations), with
     edges at minimum distance and faces from a convex-hull pass;
-  - they are flat-shaded in banded colours on a small offscreen buffer;
-  - the buffer's alpha is snapped to hard edges, then scaled up with nearest-neighbour
-    sampling onto a screen-aligned pixel grid.
+  - they are shaded like an early-2000s render: per-vertex lighting bent toward the face
+    normal (drawn as a gradient across each face), Blinn-Phong specular hotspots, a fresnel
+    rim and sky-tinted upward faces;
+  - they are drawn on an offscreen buffer at roughly half resolution, with alpha snapped to
+    hard edges, then scaled up with nearest-neighbour sampling onto a screen-aligned grid,
+    for a touch of aliasing.
 - **4D enemies** are rotated in the XW and ZW planes, projected with perspective, and drawn as
   wireframes.
 

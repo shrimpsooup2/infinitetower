@@ -285,9 +285,10 @@ title menu for replays. Nothing else in the UI carries instructional text.
   gloss highlight. An unpowered head wears the tower's own tint. A powered head takes the base
   power's colour, with accents in the secondary's colour and the core in the tertiary's.
 - **2D enemies** are flat outlined polygons.
-- **3D enemies break the style too.** They are real shaded solids that tumble and float above
-  a ground shadow. They are drawn on a low-resolution buffer with hard edges and scaled up
-  without smoothing, so they read as chunky pixel art.
+- **3D enemies break the style too.** They look like early-2000s CG renders: glossy
+  solids with light running across each face, white specular hotspots and a cool rim light.
+  They tumble and float above a ground shadow, and are drawn at slightly low resolution with
+  a touch of aliasing.
 - **4D enemies** are rotating wireframe projections through the fourth axis.
 - **Fusion visuals** come from the model's VFX language (particles, beams, shapes, orbiters,
   text, screen shake), so every fusion looks like its idea.
