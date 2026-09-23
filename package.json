@@ -1,0 +1,23 @@
+{
+  "name": "infinite-tower",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Web tower defense where every tower + ordered power combo is an AI-forged fusion (Ollama), saved and shared forever.",
+  "type": "module",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "start": "node --env-file-if-exists=.env --disable-warning=ExperimentalWarning src/server/main.ts",
+    "dev": "node --watch-path=src --env-file-if-exists=.env --disable-warning=ExperimentalWarning src/server/main.ts",
+    "test": "node --disable-warning=ExperimentalWarning --test tests/*.test.ts",
+    "typecheck": "tsc -p tsconfig.json",
+    "bot": "node --disable-warning=ExperimentalWarning tools/bot.ts",
+    "build": "node --disable-warning=ExperimentalWarning tools/build.ts",
+    "pregen": "node --env-file-if-exists=.env --disable-warning=ExperimentalWarning tools/pregen.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.18.0",
+    "typescript": "^5.9.0"
+  }
+}

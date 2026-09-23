@@ -1,0 +1,87 @@
+// Enemies are diep.io "farm" polygons walking the path. Each one exists to test
+// a different kind of answer, which is what makes fusions worth hunting for.
+
+import type { EnemyDef } from '../sim/types.ts';
+import { PAL } from './colors.ts';
+
+const E = (d: Partial<EnemyDef> & Pick<EnemyDef, 'id' | 'name' | 'shape' | 'color' | 'hp' | 'speed' | 'bounty' | 'cost' | 'intro' | 'blurb'>): EnemyDef => ({
+  armor: 0,
+  shield: 0,
+  lives: 1,
+  size: 0.28,
+  traits: [],
+  tenacity: 1,
+  abilities: [],
+  ...d,
+});
+
+export const ENEMIES: EnemyDef[] = [
+  E({ id: 'square', name: 'Square', shape: 'square', color: PAL.square, hp: 40, speed: 1.0, bounty: 3, cost: 1, intro: 1,
+    blurb: 'The humble square. Plentiful, predictable.' }),
+  E({ id: 'crasher', name: 'Crasher', shape: 'triangle', color: PAL.crasher, hp: 22, speed: 1.9, bounty: 2, size: 0.2, cost: 0.8, intro: 3,
+    traits: ['fast'], blurb: 'Fast and fragile. Punishes slow-turning defenses.' }),
+  E({ id: 'mini', name: 'Swarmling', shape: 'triangle', color: PAL.triangle, hp: 11, speed: 1.35, bounty: 1, size: 0.15, cost: 0.3, intro: 5,
+    blurb: 'Tiny triangles that arrive in packs. Bring splash.' }),
+  E({ id: 'pentagon', name: 'Pentagon', shape: 'pentagon', color: PAL.pentagon, hp: 140, speed: 0.7, armor: 6, bounty: 7, size: 0.36, cost: 3.2, intro: 6,
+    traits: ['armored'], blurb: 'Armored: kinetic hits lose 6 damage each (at least 25% gets through).' }),
+  E({ id: 'wisp', name: 'Kite', shape: 'diamond', color: '#8ef0c4', hp: 34, speed: 1.25, bounty: 4, size: 0.24, cost: 1.3, intro: 8,
+    traits: ['flying'], blurb: 'Flies straight over everything. Cannon, Mortar and Flame cannot hit it.' }),
+  E({ id: 'aegis', name: 'Aegis', shape: 'hexagon', color: '#ffd166', hp: 55, shield: 70, speed: 0.9, bounty: 7, size: 0.3, cost: 2.6, intro: 11,
+    traits: ['shielded'], blurb: 'A regenerating shield absorbs damage. Shock deals double to shields.' }),
+  E({ id: 'splitter', name: 'Splitter', shape: 'square', color: '#ffc94d', hp: 90, speed: 0.85, bounty: 4, size: 0.36, cost: 3.0, intro: 12,
+    abilities: [{ kind: 'split', enemy: 'splitling', count: 2 }], blurb: 'Splits into two smaller squares, which split again.' }),
+  E({ id: 'splitling', name: 'Splitling', shape: 'square', color: '#ffdb70', hp: 34, speed: 1.0, bounty: 2, size: 0.25, cost: 0, intro: 0,
+    abilities: [{ kind: 'split', enemy: 'mini', count: 2 }], blurb: 'Half a Splitter.' }),
+  E({ id: 'mender', name: 'Mender', shape: 'octagon', color: PAL.green, hp: 70, speed: 0.85, bounty: 8, size: 0.3, cost: 3, intro: 14,
+    abilities: [{ kind: 'heal', every: 3, radius: 1.8, amount: 0.08 }], traits: ['elite'],
+    blurb: 'Heals nearby allies for 8% of their max HP every 3 s. Kill it first.' }),
+  E({ id: 'juggernaut', name: 'Alpha Pentagon', shape: 'pentagon', color: PAL.pentagon, hp: 700, speed: 0.5, armor: 5, bounty: 30, lives: 3,
+    size: 0.55, cost: 16, intro: 15, tenacity: 0.5, traits: ['armored', 'elite'],
+    blurb: 'Huge, armored, and resistant to crowd control. Costs 3 lives if it gets through.' }),
+  E({ id: 'blinker', name: 'Blinker', shape: 'diamond', color: PAL.purple, hp: 60, speed: 1.05, bounty: 6, size: 0.26, cost: 2.2, intro: 16,
+    abilities: [{ kind: 'blink', every: 4, amount: 2 }], blurb: 'Teleports 2 tiles forward every 4 s. Defend in depth.' }),
+  E({ id: 'shade', name: 'Shade', shape: 'circle', color: '#7d7d9c', hp: 50, speed: 1.15, bounty: 7, size: 0.26, cost: 2.2, intro: 18,
+    traits: ['stealth'], blurb: 'Stealth: untargetable unless revealed by a Beacon, Mark, or reveal effect.' }),
+  E({ id: 'burrower', name: 'Burrower', shape: 'heptagon', color: '#c49a6c', hp: 75, speed: 1.0, bounty: 6, size: 0.28, cost: 2.4, intro: 20,
+    abilities: [{ kind: 'burrow', every: 6, duration: 2 }], blurb: 'Burrows underground for 2 s out of every 6: untargetable, but DoTs and zones still work.' }),
+  E({ id: 'warbanner', name: 'Warbanner', shape: 'star', color: PAL.orange, hp: 90, speed: 0.9, bounty: 8, size: 0.3, cost: 3.2, intro: 22,
+    abilities: [{ kind: 'haste_aura', radius: 2, amount: 0.3 }], traits: ['elite'],
+    blurb: 'Nearby allies move 30% faster. Priority target.' }),
+  E({ id: 'carapace', name: 'Carapace', shape: 'heptagon', color: '#9ad0c2', hp: 80, speed: 0.95, bounty: 6, size: 0.3, cost: 2.4, intro: 24,
+    abilities: [{ kind: 'carapace' }], blurb: 'Immune to one damage type (shown by its rim colour; changes every wave).' }),
+  E({ id: 'necro', name: 'Necromancer', shape: 'square', color: '#ff9f43', hp: 90, speed: 0.8, bounty: 10, size: 0.32, cost: 4, intro: 26,
+    abilities: [{ kind: 'revive', every: 6, radius: 2.5, count: 3 }], traits: ['elite'],
+    blurb: 'Every 6 s, raises up to 3 recently fallen allies nearby.' }),
+  E({ id: 'phantom', name: 'Phantom', shape: 'circle', color: '#e6e6ff', hp: 60, speed: 1.1, bounty: 6, size: 0.26, cost: 2.4, intro: 27,
+    abilities: [{ kind: 'phase', count: 3 }], blurb: 'Ignores the first 3 hits from each tower. DoTs and fast hitters shine.' }),
+  E({ id: 'mimic', name: 'Mimic', shape: 'hexagon', color: '#d9d9d9', hp: 100, speed: 0.9, bounty: 8, size: 0.3, cost: 3.4, intro: 29,
+    abilities: [{ kind: 'mimic' }], blurb: 'Adapts: gains resistance to whatever damage type hurts it most.' }),
+  E({ id: 'brood', name: 'Broodmother', shape: 'triangle', color: PAL.crasher, hp: 280, speed: 0.6, bounty: 18, lives: 2, size: 0.45, cost: 9, intro: 31,
+    abilities: [{ kind: 'spawn', every: 1.6, enemy: 'mini' }], traits: ['elite'],
+    blurb: 'Drops a Swarmling every 1.6 s as it walks.' }),
+  // Bosses (HP is multiplied by the wave's HP multiplier like everything else).
+  E({ id: 'monolith', name: 'The Monolith', shape: 'pentagon', color: '#8c9dff', hp: 1500, speed: 0.42, armor: 4, bounty: 150, lives: 10,
+    size: 0.8, cost: 0, intro: 0, tenacity: 0.35, traits: ['boss'],
+    abilities: [{ kind: 'stomp', every: 7, radius: 2.2, duration: 2.5 }],
+    blurb: 'Stomps every 7 s, disabling towers within 2 tiles for 2.5 s. Spread your defense.' }),
+  E({ id: 'hydra', name: 'The Hydra', shape: 'hexagon', color: PAL.green, hp: 1100, speed: 0.45, bounty: 150, lives: 10,
+    size: 0.75, cost: 0, intro: 0, tenacity: 0.35, traits: ['boss'],
+    abilities: [{ kind: 'hydra', enemy: 'hydra_head', count: 3 }],
+    blurb: 'On death splits into 3 heads, each resisting a different damage type.' }),
+  E({ id: 'hydra_head', name: 'Hydra Head', shape: 'pentagon', color: '#33e88a', hp: 280, speed: 0.6, bounty: 40, lives: 3,
+    size: 0.45, cost: 0, intro: 0, tenacity: 0.5, traits: ['elite'], blurb: 'Resists one damage type by 75%.' }),
+  E({ id: 'chronarch', name: 'The Chronarch', shape: 'octagon', color: PAL.square, hp: 1300, speed: 0.45, bounty: 250, lives: 10,
+    size: 0.8, cost: 0, intro: 0, tenacity: 0.35, traits: ['boss'],
+    abilities: [{ kind: 'rewind_hp', amount: 0.5, duration: 5 }, { kind: 'haste_aura', radius: 2.5, amount: 0.25 }],
+    blurb: 'Once below 50% HP, rewinds its HP to what it was 5 s earlier. Speeds nearby allies. Burst it.' }),
+  E({ id: 'eclipse', name: 'The Eclipse', shape: 'circle', color: '#5a5a6e', hp: 1200, speed: 0.4, bounty: 400, lives: 20,
+    size: 0.9, cost: 0, intro: 0, tenacity: 0.3, shield: 400, traits: ['boss', 'shielded'],
+    abilities: [{ kind: 'eclipse' }],
+    blurb: 'Phase 1: regenerating shield. Phase 2: splits off two mirror clones. Phase 3: sprints.' }),
+  E({ id: 'eclipse_clone', name: 'Mirror Clone', shape: 'circle', color: '#8a8aa0', hp: 300, speed: 0.55, bounty: 40, lives: 4,
+    size: 0.55, cost: 0, intro: 0, tenacity: 0.5, traits: ['elite'], blurb: 'A fragment of the Eclipse.' }),
+];
+
+export const ENEMY_BY_ID = new Map(ENEMIES.map((e) => [e.id, e]));
+
+export const BOSS_WAVES: Record<number, string> = { 10: 'monolith', 20: 'hydra', 30: 'chronarch', 40: 'eclipse' };
