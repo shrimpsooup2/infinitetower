@@ -15,7 +15,7 @@ import { waveSummary } from '../content/waves.ts';
 import { describeSpec } from '../effects/describe.ts';
 import { fusionKey } from '../effects/keys.ts';
 import { Renderer, type RenderOpts } from './render/renderer.ts';
-import { towerIcon } from './render/tower-art.ts';
+import { towerIcon, TOWER_TINT } from './render/tower-art.ts';
 import { enemyIcon } from './render/enemy-art.ts';
 import { h, mount, clear, tone, fmtNum, fmtDate } from './ui/dom.ts';
 import type { Audio } from './audio.ts';
@@ -24,7 +24,6 @@ import { type Codex, type Settings, saveRun, clearRun, recordRun, saveSettings }
 import { colorsFor } from '../sim/world.ts';
 import { Tutorial } from './tutorial.ts';
 
-const BUILD_COLORS = ['#8efffb', '#b4ff8e', '#ff8e8e', '#ffeb8e', '#8eb2ff', '#b58eff', '#ffb08e', '#8effc3', '#e08eff', '#ff8ec8'];
 
 export interface GameDeps {
   canvas: HTMLCanvasElement;
@@ -373,10 +372,10 @@ export class Game {
     (this.el.tr as HTMLElement & { speedBtns?: HTMLElement[] }).speedBtns = speedBtns;
 
     // Build bar.
-    TOWERS.forEach((t, i) => {
-      const btn = h('div', { class: 'tbtn', style: tone(BUILD_COLORS[i]), on: { click: () => this.startPlacing(t) } },
+    TOWERS.forEach((t) => {
+      const btn = h('div', { class: 'tbtn', style: tone(TOWER_TINT[t.id]), on: { click: () => this.startPlacing(t) } },
         h('span', { class: 'key' }, t.hotkey),
-        towerIcon(t.id, 1, 44, undefined, 0, 1.35),
+        towerIcon(t.id, 1, 44, undefined, 0, 1.1),
         h('div', { class: 'lbl' }, h('span', { class: 'nm' }, t.name), h('span', { class: 'cost' }, `${t.cost}`)),
       );
       btn.dataset.id = t.id;

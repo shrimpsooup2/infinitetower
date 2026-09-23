@@ -296,7 +296,7 @@ export class Renderer {
         const color = resolve(look.color, colors, DAMAGE_COLORS[t.def.dtype], null, colors.base);
         const core = look.core ? resolve(look.core, colors, DAMAGE_COLORS[t.def.dtype], null, '#ffffff') : null;
         const R = bodyRadius(t.tier);
-        const sx0 = t.x + Math.cos(t.angle) * R * 1.8, sy0 = t.y + Math.sin(t.angle) * R * 1.8;
+        const sx0 = t.x + Math.cos(t.angle) * R * 1.25, sy0 = t.y + Math.sin(t.angle) * R * 1.25;
         t.beamTargets.forEach((id, i) => {
           const e = w.enemyById.get(id);
           if (!e) return;
@@ -444,7 +444,7 @@ export class Renderer {
       ctx.setLineDash([]);
     }
     if (opts.selected === t) {
-      circlePath(ctx, cx, cy, R * 1.25);
+      circlePath(ctx, cx, cy, R * 1.62);
       ctx.strokeStyle = 'rgba(255,255,255,0.9)';
       ctx.lineWidth = 2;
       ctx.stroke();
