@@ -632,6 +632,8 @@ export class World {
   }
 
   private checkWaves(): void {
+    // A final leak can empty the last wave in the same step it ends the game.
+    if (this.phase === 'defeat') return;
     for (const a of [...this.active]) {
       if (a.spawning || a.alive > 0) continue;
       this.active.splice(this.active.indexOf(a), 1);

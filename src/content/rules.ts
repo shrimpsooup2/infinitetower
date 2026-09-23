@@ -18,8 +18,8 @@ export const RULES = {
   countdown: 15,
   /** Gold per second of countdown skipped by calling a wave early (scaled by wave). */
   earlyCallPerSec: 1.2,
-  clearBonus: (n: number) => 20 + 5 * n,
-  bountyMult: (n: number) => 1 + 0.02 * (n - 1),
+  clearBonus: (n: number) => 30 + 9 * n,
+  bountyMult: (n: number) => 1 + 0.04 * (n - 1),
   /** Global HP creep on top of the shapes themselves getting bigger. Endless keeps climbing. */
   hpMult: (n: number) => Math.pow(1.02, n - 1) * (n > 60 ? Math.pow(1.05, n - 60) : 1),
   /** Gold a single tower's effects may grant per wave. */

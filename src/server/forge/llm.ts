@@ -7,6 +7,8 @@ import { offlineFusion } from '../../effects/combiner.ts';
 import { POWER_BY_ID } from '../../content/powers.ts';
 import { TOWER_BY_ID } from '../../content/towers.ts';
 import { parseKey } from '../../effects/keys.ts';
+import type { FusionSpec } from '../../effects/types.ts';
+import type { PowerDef, TowerDef } from '../../sim/types.ts';
 
 export interface ChatOptions {
   temperature: number;
@@ -93,17 +95,46 @@ export class MockLLM implements LLM {
     if (!parsed) return '{"concept": "broken"}';
     const tower = TOWER_BY_ID.get(parsed.tower)!;
     const powers = parsed.powers.map((p) => POWER_BY_ID.get(p)!);
-    const spec = offlineFusion(tower, powers, o.key!);
     const isRepair = messages.length > 2;
+    const spec = powers.length === 3 ? this.evolve(messages, tower, powers, o.key!) : offlineFusion(tower, powers, o.key!);
     spec.name = `Mock ${powers.map((p) => p.noun).join(' ')} ${this.calls}`.slice(0, 32);
     spec.concept = `Mock fusion for ${o.key}.`;
-    spec.vfx = [...(spec.vfx ?? []), {
+    spec.vfx = [...(spec.vfx ?? []).filter((v) => v.id !== 'mock_burst'), {
       id: 'mock_burst',
       layers: [{ kind: 'particles', count: 12, shape: 'star', direction: 'radial', speed: [2, 4], life: [0.3, 0.6], color: 'secondary', glow: true }],
     }];
     spec.visual = { ...(spec.visual ?? {}), kill: 'mock_burst', impact: spec.visual?.impact ?? 'pop', aura: spec.visual?.aura ?? 'halo' };
+    // Answer the most common repair request the way a model would.
+    const feedback = isRepair ? String(messages[messages.length - 1]?.content ?? '') : '';
+    if (/same trigger/.test(feedback) && spec.rules.length < 6) {
+      spec.rules.push({ when: { event: 'every_nth_attack', n: 4 }, do: [{ action: 'explode', at: 'target', radius: 1.2, amount: { dmg: 0.4 } }] });
+    }
     await new Promise((r) => setTimeout(r, isRepair ? 5 : 20));
     return '```json\n' + JSON.stringify(spec) + '\n```';
+  }
+
+  /** A triple keeps its parent pair (quoted in the prompt) and adds one tertiary twist. */
+  private evolve(messages: ChatMessage[], tower: TowerDef, powers: PowerDef[], key: string): FusionSpec {
+    const user = String(messages.find((m) => m.role === 'user')?.content ?? '');
+    const at = user.indexOf('PARENT FUSION');
+    let parent: FusionSpec | null = null;
+    try {
+      parent = at >= 0 ? (extractJson(user.slice(user.indexOf('\n', at))) as FusionSpec) : null;
+    } catch {
+      parent = null;
+    }
+    if (!parent) return offlineFusion(tower, powers, key);
+    const spec: FusionSpec = JSON.parse(JSON.stringify(parent));
+    const twist: FusionSpec['rules'][number] = {
+      when: { event: 'on_kill' },
+      do: [{ action: 'explode', at: 'target', radius: 1.4, amount: { dmg: 0.5 } }, { action: 'vfx', effect: 'mock_twist', at: 'target' }],
+    };
+    if (spec.rules.length >= 6) spec.rules[spec.rules.length - 1] = twist;
+    else spec.rules.push(twist);
+    spec.vfx = [...(spec.vfx ?? []).filter((v) => v.id !== 'mock_twist'), {
+      id: 'mock_twist', layers: [{ kind: 'shape', shape: 'ring', color: 'tertiary', radius: [0.2, 1.4], duration: 0.4 }],
+    }];
+    return spec;
   }
 }
 
