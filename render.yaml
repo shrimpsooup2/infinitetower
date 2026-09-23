@@ -1,0 +1,21 @@
+# Render blueprint for the forge backend on Render's free plan.
+# Render dashboard -> New -> Blueprint -> pick this repo. It will ask for the
+# two secret values below. Fusions are stored in Firebase Firestore, because
+# free Render instances lose their disk whenever they restart.
+services:
+  - type: web
+    name: infinitetower-forge
+    runtime: docker
+    plan: free
+    healthCheckPath: /api/health
+    envVars:
+      - key: OLLAMA_API_KEY
+        sync: false
+      - key: FIREBASE_SERVICE_ACCOUNT
+        sync: false
+      - key: CORS_ORIGINS
+        value: https://shrimpsooup2.github.io
+      - key: TRUST_PROXY
+        value: "1"
+      - key: FORGE_DAILY_CAP
+        value: "500"

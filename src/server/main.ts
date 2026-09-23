@@ -16,7 +16,7 @@ app.server.listen(port, host, () => {
     : cfg.llm === 'mock' ? 'MOCK (test provider)' : `${cfg.ollamaModel} @ ${cfg.ollamaHost}`;
   console.log(`Infinite Tower running at http://localhost:${port}`);
   console.log(`  forge: ${forge}`);
-  console.log(`  database: ${cfg.dbPath}`);
+  console.log(`  database: ${cfg.firebaseServiceAccount ? 'Firestore (Firebase)' : cfg.dbPath}`);
   if (cfg.corsOrigins.length) console.log(`  API open to: ${cfg.corsOrigins.join(', ')}`);
 });
 

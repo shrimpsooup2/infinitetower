@@ -1,11 +1,36 @@
-// SQLite store (node:sqlite, no native dependencies). Fusions are stored once
-// and shared forever. No player identity is stored: a discovery is credited
-// only with its number and date.
+// Fusion storage. Fusions are stored once and shared forever. No player
+// identity is stored: a discovery is credited only with its number and date.
+// Two backends implement FusionStore: SQLite (node:sqlite, a local file) and
+// Firestore (firestore.ts, for free hosting where the disk is not kept).
 
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import type { FusionSpec } from '../effects/types.ts';
+
+export type NewFusion = Omit<FusionRow, 'discoveryNo' | 'discoveredAt' | 'forgedCount' | 'createdAt'>;
+
+export interface StoreStats {
+  discovered: number;
+  provisional: number;
+  recent: { no: number; tower: string; powers: string[]; at: number }[];
+}
+
+export interface FusionStore {
+  get(key: string): Promise<FusionRow | null>;
+  /** Insert or replace a fusion. A ready fusion gets the next discovery number the first time. */
+  save(row: NewFusion): Promise<FusionRow>;
+  bumpForged(key: string): Promise<void>;
+  /** Ready pair fusions sharing a tower and base power, newest first (avoid list and novelty). */
+  sameTowerBase(tower: string, base: string, exceptKey: string, limit?: number): Promise<FusionRow[]>;
+  /** Ready evolutions of the same parent pair. */
+  siblings(parentKey: string, exceptKey: string): Promise<FusionRow[]>;
+  nameTaken(name: string, exceptKey: string): Promise<boolean>;
+  oldestProvisional(): Promise<FusionRow | null>;
+  stats(): Promise<StoreStats>;
+  log(key: string, attempt: number, model: string, promptVersion: number, ms: number, output: string | null, problems: string[]): Promise<void>;
+  close(): Promise<void>;
+}
 
 export interface FusionRow {
   key: string;
@@ -65,7 +90,7 @@ function fromRaw(r: RawRow): FusionRow {
   };
 }
 
-export class Store {
+export class SqliteStore implements FusionStore {
   readonly db: DatabaseSync;
 
   constructor(path: string) {
@@ -116,15 +141,18 @@ export class Store {
     `);
   }
 
-  get(key: string): FusionRow | null {
+  private row(key: string): FusionRow | null {
     const r = this.db.prepare('SELECT * FROM fusions WHERE key = ?').get(key) as RawRow | undefined;
     return r ? fromRaw(r) : null;
   }
 
-  /** Insert or replace a fusion. A ready fusion gets the next discovery number the first time. */
-  save(row: Omit<FusionRow, 'discoveryNo' | 'discoveredAt' | 'forgedCount' | 'createdAt'>): FusionRow {
+  async get(key: string): Promise<FusionRow | null> {
+    return this.row(key);
+  }
+
+  async save(row: NewFusion): Promise<FusionRow> {
     const now = Date.now();
-    const existing = this.get(row.key);
+    const existing = this.row(row.key);
     let discoveryNo = existing?.discoveryNo ?? null;
     let discoveredAt = existing?.discoveredAt ?? null;
     this.db.exec('BEGIN IMMEDIATE');
@@ -154,36 +182,35 @@ export class Store {
       this.db.exec('ROLLBACK');
       throw e;
     }
-    return this.get(row.key)!;
+    return this.row(row.key)!;
   }
 
-  bumpForged(key: string): void {
+  async bumpForged(key: string): Promise<void> {
     this.db.prepare('UPDATE fusions SET forged_count = forged_count + 1 WHERE key = ?').run(key);
   }
 
-  /** Fusions sharing a tower and base power (for the "avoid" list and novelty checks). */
-  sameTowerBase(tower: string, base: string, exceptKey: string, limit = 40): FusionRow[] {
+  async sameTowerBase(tower: string, base: string, exceptKey: string, limit = 40): Promise<FusionRow[]> {
     return (this.db.prepare(
       "SELECT * FROM fusions WHERE tower = ? AND base = ? AND key != ? AND status = 'ready' AND parent_key IS NULL ORDER BY discovery_no DESC LIMIT ?",
     ).all(tower, base, exceptKey, limit) as unknown as RawRow[]).map(fromRaw);
   }
 
-  siblings(parentKey: string, exceptKey: string): FusionRow[] {
+  async siblings(parentKey: string, exceptKey: string): Promise<FusionRow[]> {
     return (this.db.prepare("SELECT * FROM fusions WHERE parent_key = ? AND key != ? AND status = 'ready' LIMIT 40")
       .all(parentKey, exceptKey) as unknown as RawRow[]).map(fromRaw);
   }
 
-  nameTaken(name: string, exceptKey: string): boolean {
+  async nameTaken(name: string, exceptKey: string): Promise<boolean> {
     const r = this.db.prepare("SELECT 1 FROM fusions WHERE lower(name) = lower(?) AND key != ? AND status = 'ready' LIMIT 1").get(name, exceptKey);
     return !!r;
   }
 
-  oldestProvisional(): FusionRow | null {
+  async oldestProvisional(): Promise<FusionRow | null> {
     const r = this.db.prepare("SELECT * FROM fusions WHERE status = 'provisional' ORDER BY updated_at ASC LIMIT 1").get() as RawRow | undefined;
     return r ? fromRaw(r) : null;
   }
 
-  stats(): { discovered: number; provisional: number; recent: { no: number; tower: string; powers: string[]; at: number }[] } {
+  async stats(): Promise<StoreStats> {
     const c = this.db.prepare("SELECT COUNT(*) AS n FROM fusions WHERE status = 'ready'").get() as { n: number };
     const p = this.db.prepare("SELECT COUNT(*) AS n FROM fusions WHERE status = 'provisional'").get() as { n: number };
     const recent = (this.db.prepare(
@@ -193,12 +220,12 @@ export class Store {
     return { discovered: c.n, provisional: p.n, recent };
   }
 
-  log(key: string, attempt: number, model: string, promptVersion: number, ms: number, output: string | null, problems: string[]): void {
+  async log(key: string, attempt: number, model: string, promptVersion: number, ms: number, output: string | null, problems: string[]): Promise<void> {
     this.db.prepare('INSERT INTO gen_log (key, attempt, model, prompt_version, ms, output, problems, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
       .run(key, attempt, model, promptVersion, ms, output ? output.slice(0, 20000) : null, JSON.stringify(problems), Date.now());
   }
 
-  close(): void {
+  async close(): Promise<void> {
     this.db.close();
   }
 }

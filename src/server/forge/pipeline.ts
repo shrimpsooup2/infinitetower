@@ -10,7 +10,7 @@
 //                 (no number) and retry later in the background.
 
 import { randomUUID } from 'node:crypto';
-import type { Store, FusionRow } from '../db.ts';
+import type { FusionStore, FusionRow } from '../db.ts';
 import type { LLM } from './llm.ts';
 import { extractJson } from './llm.ts';
 import type { Balancer } from './balancer.ts';
@@ -76,14 +76,14 @@ export class Forge {
   readonly jobs = new Map<string, Job>();
   private queue: Job[] = [];
   private running = 0;
-  private store: Store;
+  private store: FusionStore;
   private llm: LLM | null;
   private balancer: Balancer;
   private opts: ForgeOptions;
   /** Tokens of clients that caused a generation (for the "WORLD FIRST" banner). */
   private firsts = new Map<string, string>();
 
-  constructor(store: Store, llm: LLM | null, balancer: Balancer, opts: ForgeOptions) {
+  constructor(store: FusionStore, llm: LLM | null, balancer: Balancer, opts: ForgeOptions) {
     this.store = store;
     this.llm = llm;
     this.balancer = balancer;
@@ -104,18 +104,27 @@ export class Forge {
     return { tower, powers: powers as PowerDef[] };
   }
 
-  /** Start (or join) generation of a fusion. */
-  request(key: string, interactive = true): { job: Job | null; row: FusionRow | null; token: string | null } {
-    const row = this.store.get(key);
-    if (row && (row.status === 'ready' || !this.llm)) return { job: null, row, token: null };
+  /** An existing job for this key, bumped to the front if a player is now waiting on it. */
+  private join(key: string, interactive: boolean): Job | null {
     const existing = this.jobs.get(key);
-    if (existing) {
-      if (interactive && !existing.interactive) {
-        existing.interactive = true;
-        this.queue.sort((a, b) => Number(b.interactive) - Number(a.interactive));
-      }
-      return { job: existing, row, token: null };
+    if (!existing) return null;
+    if (interactive && !existing.interactive) {
+      existing.interactive = true;
+      this.queue.sort((a, b) => Number(b.interactive) - Number(a.interactive));
     }
+    return existing;
+  }
+
+  /** Start (or join) generation of a fusion. */
+  async request(key: string, interactive = true): Promise<{ job: Job | null; row: FusionRow | null; token: string | null }> {
+    const live = this.jobs.get(key);
+    if (live && live.stage !== 'done' && live.stage !== 'failed') return { job: this.join(key, interactive), row: null, token: null };
+    const row = await this.store.get(key);
+    if (row && (row.status === 'ready' || !this.llm)) return { job: null, row, token: null };
+    // A job may have started while the store was being read; a recently finished one
+    // (kept for a few minutes) also answers, so a provisional result isn't re-forged at once.
+    const joined = this.join(key, interactive);
+    if (joined) return { job: joined, row, token: null };
     if (!this.llm) return { job: null, row, token: null };
     const r = this.resolve(key);
     if (!r) throw new Error('invalid fusion key');
@@ -173,11 +182,11 @@ export class Forge {
     const pk = parentOf(job.key);
     let parent: FusionRow | null = null;
     if (pk) {
-      parent = this.store.get(pk);
+      parent = await this.store.get(pk);
       if (!parent || (parent.status !== 'ready' && this.llm)) {
         job.stage = 'waiting_parent';
-        const r = this.request(pk, job.interactive);
-        parent = r.row && r.row.status === 'ready' ? r.row : r.job ? await r.job.promise.catch(() => this.store.get(pk)) : this.store.get(pk);
+        const r = await this.request(pk, job.interactive);
+        parent = r.row && r.row.status === 'ready' ? r.row : r.job ? await r.job.promise.catch(() => this.store.get(pk)) : await this.store.get(pk);
       }
       if (!parent) throw new Error('parent fusion unavailable');
     }
@@ -195,21 +204,21 @@ export class Forge {
     }
   }
 
-  private avoidList(job: Job, parent: FusionRow | null): AvoidEntry[] {
+  private async avoidList(job: Job, parent: FusionRow | null): Promise<AvoidEntry[]> {
     const rows = parent
-      ? this.store.siblings(parent.key, job.key)
-      : this.store.sameTowerBase(job.tower.id, job.powers[0].id, job.key, 8);
+      ? await this.store.siblings(parent.key, job.key)
+      : await this.store.sameTowerBase(job.tower.id, job.powers[0].id, job.key, 8);
     return rows.slice(0, 8).map((r) => ({ name: r.name, concept: r.concept, powers: r.powers }));
   }
 
-  private noveltyProblems(job: Job, spec: FusionSpec, parent: FusionRow | null): string[] {
+  private async noveltyProblems(job: Job, spec: FusionSpec, parent: FusionRow | null): Promise<string[]> {
     const problems: string[] = [];
-    if (this.store.nameTaken(spec.name, job.key)) problems.push(`The name "${spec.name}" is already taken by another fusion. Choose a different name.`);
+    if (await this.store.nameTaken(spec.name, job.key)) problems.push(`The name "${spec.name}" is already taken by another fusion. Choose a different name.`);
     const sig = signature(spec);
     if (parent) {
       const parentSig = new Set(parent.signature);
       const mine = new Set([...sig].filter((x) => !parentSig.has(x)));
-      for (const s of this.store.siblings(parent.key, job.key)) {
+      for (const s of await this.store.siblings(parent.key, job.key)) {
         const theirs = new Set(s.signature.filter((x) => !parentSig.has(x)));
         if (mine.size && jaccard(mine, theirs) >= 0.9) {
           problems.push(`Your twist works just like the existing evolution "${s.name}" (${s.concept}). Make the ${job.powers[2].name} twist different.`);
@@ -217,7 +226,7 @@ export class Forge {
         }
       }
     } else {
-      for (const s of this.store.sameTowerBase(job.tower.id, job.powers[0].id, job.key)) {
+      for (const s of await this.store.sameTowerBase(job.tower.id, job.powers[0].id, job.key)) {
         if (jaccard(sig, new Set(s.signature)) >= this.opts.noveltyLimit) {
           problems.push(`This works almost exactly like the existing fusion "${s.name}" (${s.concept}). Find a different interaction between the powers.`);
           break;
@@ -232,7 +241,7 @@ export class Forge {
     if (!llm) throw new Error('no LLM configured');
     const seed = hashString(job.key);
     const twist = TWIST_SEEDS[seed % TWIST_SEEDS.length];
-    const avoid = this.avoidList(job, parent);
+    const avoid = await this.avoidList(job, parent);
     const [base, secondary] = job.powers;
     const initial: ChatMessage[] = parent
       ? triplePrompt(job.tower, job.powers, { name: parent.name, spec: parent.spec }, twist, avoid)
@@ -249,7 +258,7 @@ export class Forge {
       try {
         output = await llm.chat(messages, { temperature: attempt === 1 ? 0.9 : 0.5, key: job.key });
       } catch (e) {
-        this.store.log(job.key, attempt, llm.name, PROMPT_VERSION, Date.now() - t0, null, [`LLM error: ${(e as Error).message}`]);
+        this.logAttempt(job.key, attempt, llm.name, Date.now() - t0, null, [`LLM error: ${(e as Error).message}`]);
         if (attempt >= 2) throw e;
         continue;
       }
@@ -265,7 +274,7 @@ export class Forge {
         else {
           spec = v.spec;
           problems.push(...lintFusion(spec, job.powers, parent?.spec ?? null).problems);
-          if (!problems.length) problems.push(...this.noveltyProblems(job, spec, parent));
+          if (!problems.length) problems.push(...(await this.noveltyProblems(job, spec, parent)));
         }
       }
       let balance = null;
@@ -274,7 +283,7 @@ export class Forge {
         balance = await this.balancer.solve(job.tower.id, spec, job.powers.map((p) => p.id));
         if (balance.status === 'too_strong') problems.push(tooStrongProblem(balance.ratio, balance.report.perScenario));
       }
-      this.store.log(job.key, attempt, llm.name, PROMPT_VERSION, Date.now() - t0, output, problems);
+      this.logAttempt(job.key, attempt, llm.name, Date.now() - t0, output, problems);
       if (spec && balance && !problems.length) {
         return this.store.save({
           key: job.key, tower: job.tower.id, powers: job.powers.map((p) => p.id), parentKey: parent?.key ?? null,
@@ -289,10 +298,15 @@ export class Forge {
     throw new Error(`gave up after ${job.attempt} attempts: ${lastProblems.slice(0, 3).join(' | ')}`);
   }
 
+  /** Generation log for prompt tuning; never allowed to fail a job. */
+  private logAttempt(key: string, attempt: number, model: string, ms: number, output: string | null, problems: string[]): void {
+    this.store.log(key, attempt, model, PROMPT_VERSION, ms, output, problems).catch((e: Error) => console.error('[forge] log failed:', e.message));
+  }
+
   /** Background: retry one provisional fusion (e.g. after an outage). */
-  retryOneProvisional(): void {
+  async retryOneProvisional(): Promise<void> {
     if (!this.llm || this.running >= this.opts.concurrency || this.queue.length) return;
-    const row = this.store.oldestProvisional();
-    if (row && !this.jobs.has(row.key)) this.request(row.key, false);
+    const row = await this.store.oldestProvisional();
+    if (row && !this.jobs.has(row.key)) await this.request(row.key, false);
   }
 }

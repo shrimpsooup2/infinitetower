@@ -9,7 +9,7 @@ dependencies**:
 | --- | --- |
 | Run TypeScript on the server | Node 22.18+ native type stripping (erasable syntax only: no enums, namespaces or parameter properties) |
 | Serve TypeScript to the browser | `node:module` `stripTypeScriptTypes`, cached by file modification time. Browsers load `src/client/main.ts` as a native ES module. |
-| Database | `node:sqlite` (`DatabaseSync`, WAL) |
+| Database | `node:sqlite` (`DatabaseSync`, WAL) locally, or Firestore over its REST API with service-account JWT sign-in (`node:crypto`) |
 | Balance workers | `node:worker_threads` |
 | HTTP | `node:http` |
 | Rendering | Canvas 2D (no engine) |
@@ -35,7 +35,8 @@ src/
                   waves (budget generator), maps (9 + tutorial), packs, rarity, rules
                   (difficulties, economy), twists, colours
   balance/        bench: benchmark scenarios and the potency solver
-  server/         app (HTTP, static + TS stripping, API, rate limit), db (SQLite store),
+  server/         app (HTTP, static + TS stripping, API, rate limit), db (store interface +
+                  SQLite), firestore (Firestore store),
                   forge/ (prompt, examples, llm, pipeline, balancer, balance-worker), main
   client/         main (title, campaign, codex, settings), game (loop, input, HUD, packs,
                   hand, side panel), tutorial, forge client, storage, audio,
@@ -86,7 +87,7 @@ tools/            bot (playtest), pregen (seed the database), screenshot (Playwr
 
 ## 5. Testing and tuning
 
-- `npm test` runs 24 cases:
+- `npm test` runs 29 cases:
   - every authored spec validates;
   - the validator survives 2,000 random fuzz specs;
   - 300 random offline fusions validate;
@@ -99,7 +100,10 @@ tools/            bot (playtest), pregen (seed the database), screenshot (Playwr
   - the forge works end to end with the mock model, including numbering, World Firsts,
     lineage, the provisional fallback and the HTTP API;
   - the static build is plain JS with no server code, and the deployment guards (CORS
-    allowlist, daily cap, spoof-proof per-IP limit) hold.
+    allowlist, daily cap, spoof-proof per-IP limit) hold;
+  - the SQLite and Firestore stores pass the same contract tests. Firestore is tested against
+    a local fake of its REST API and token endpoint, with real JWT signature checks, and the
+    forge runs end to end on it.
 - `npm run bot -- all normal 2` plays the campaign headlessly and prints the result per map
   (waves reached, lives, towers by tier, fusions, time). Set `BOT_TRACE=1` to also print lives
   per wave and the economy totals. It takes about 2 s per map.
@@ -108,17 +112,23 @@ tools/            bot (playtest), pregen (seed the database), screenshot (Playwr
 
 ## 6. Deployment
 
-One Node process serves the game, the API and the forge, with one SQLite file. The public
-setup puts a static build of the game on GitHub Pages (`tools/build.ts`, published by
-`.github/workflows/pages.yml`) and runs this server from the `Dockerfile` as the API, with the
-key as a host secret. See [deploy.md](deploy.md).
+One Node process serves the game, the API and the forge. The free public setup puts:
+
+- a static build of the game on GitHub Pages (`tools/build.ts`, published by
+  `.github/workflows/pages.yml`);
+- this server on Render's free plan (`render.yaml`, `Dockerfile`), with the key as a host
+  secret;
+- fusions in Firebase Firestore, because free servers lose their disk.
+
+See [deploy.md](deploy.md).
 
 - Set `OLLAMA_API_KEY` (and optionally `OLLAMA_MODEL`, `OLLAMA_FORMAT`, `OLLAMA_THINK`).
   `FORGE_CONCURRENCY` limits parallel model calls, `FORGE_RATE_LIMIT` limits new generations
   per IP per hour, `FORGE_DAILY_CAP` limits them per day across everyone, and
   `BALANCE_WORKERS` sets the solver's thread count. For a browser site on another origin,
   set `CORS_ORIGINS`, and behind a hosting proxy, `TRUST_PROXY=1`.
-- Keep `data/` on a persistent volume. Everything else is stateless.
+- Storage: with `FIREBASE_SERVICE_ACCOUNT` set, fusions live in Firestore and the server is
+  stateless. Otherwise they go in SQLite at `DB_PATH`; keep that on a persistent volume.
 - Before launch, `npm run pregen -- N` can seed the database so early players meet existing
   fusions.
 - Never commit `.env` (it's gitignored). Put the key in the host's secret store.

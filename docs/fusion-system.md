@@ -254,7 +254,13 @@ The model decides what a fusion **does**. The solver (`src/balance/bench.ts`) de
 
 ### 5.1 Database
 
-SQLite (`node:sqlite`, WAL). The `fusions` table stores, per key:
+Two backends implement the same `FusionStore` interface:
+
+- **SQLite** (`node:sqlite`, WAL) for local and self-hosted setups;
+- **Firestore**, for free hosting: one document per fusion in `fusions/{key}`, discovery
+  numbers from an atomic increment on `meta/counter`, and a `gen_log` collection.
+
+Each fusion record stores:
 
 - tower, base, powers, parent key;
 - status (`ready` or `provisional`);

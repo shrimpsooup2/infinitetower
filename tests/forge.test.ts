@@ -4,7 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { AddressInfo } from 'node:net';
-import { Store } from '../src/server/db.ts';
+import { SqliteStore } from '../src/server/db.ts';
 import { Forge } from '../src/server/forge/pipeline.ts';
 import { Balancer } from '../src/server/forge/balancer.ts';
 import { MockLLM, type LLM } from '../src/server/forge/llm.ts';
@@ -14,10 +14,10 @@ import { fusionKey } from '../src/effects/keys.ts';
 const OPTS = { concurrency: 2, maxRepairs: 2, noveltyLimit: 0.85 };
 
 test('pairs and triples are forged, numbered and shared', async () => {
-  const store = new Store(':memory:');
+  const store = new SqliteStore(':memory:');
   const forge = new Forge(store, new MockLLM(), new Balancer(0), OPTS);
   const pair = fusionKey('arc', ['frost', 'echo']);
-  const r1 = forge.request(pair);
+  const r1 = await forge.request(pair);
   assert.ok(r1.job && r1.token);
   const row = await r1.job.promise;
   assert.equal(row.status, 'ready');
@@ -26,16 +26,16 @@ test('pairs and triples are forged, numbered and shared', async () => {
   assert.ok(forge.isWorldFirst(pair, r1.token));
 
   // A second player gets the stored fusion straight away, and no world first.
-  const r2 = forge.request(pair);
+  const r2 = await forge.request(pair);
   assert.equal(r2.job, null);
   assert.equal(r2.row?.discoveryNo, 1);
   assert.ok(!forge.isWorldFirst(pair, r2.token));
 
   // A triple forges its missing parent pair first.
   const triple = fusionKey('bolt', ['ember', 'storm', 'void']);
-  const r3 = forge.request(triple);
+  const r3 = await forge.request(triple);
   const t = await r3.job!.promise;
-  const parent = store.get(fusionKey('bolt', ['ember', 'storm']));
+  const parent = await store.get(fusionKey('bolt', ['ember', 'storm']));
   assert.equal(parent?.status, 'ready');
   assert.equal(t.status, 'ready');
   assert.deepEqual([parent!.discoveryNo, t.discoveryNo].sort(), [2, 3]);
@@ -45,10 +45,10 @@ test('pairs and triples are forged, numbered and shared', async () => {
 
 test('a broken model falls back to a provisional fusion without a number', async () => {
   const broken: LLM = { name: 'broken', chat: async () => 'I would love to help, but here is no JSON.' };
-  const store = new Store(':memory:');
+  const store = new SqliteStore(':memory:');
   const forge = new Forge(store, broken, new Balancer(0), OPTS);
   const key = fusionKey('cannon', ['tide', 'gravity']);
-  const row = await forge.request(key).job!.promise;
+  const row = await (await forge.request(key)).job!.promise;
   assert.equal(row.status, 'provisional');
   assert.equal(row.discoveryNo, null);
   assert.ok(row.spec.rules.length > 0, 'the offline combination is still playable');

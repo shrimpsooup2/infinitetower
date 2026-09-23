@@ -50,14 +50,22 @@ export class ForgeClient {
     this.events = events;
   }
 
+  /**
+   * Free hosts put the backend to sleep when idle and take up to a minute to
+   * wake it, so keep asking for a while before settling on offline fusions.
+   */
   async health(): Promise<void> {
-    try {
-      const r = await fetch(api('/api/health'), { cache: 'no-store' });
-      const j = (await r.json()) as { forge: boolean; model: string | null };
-      this.online = !!j.forge;
-      this.model = j.model;
-    } catch {
-      this.online = false;
+    for (let attempt = 0; attempt < 4; attempt++) {
+      try {
+        const r = await fetch(api('/api/health'), { cache: 'no-store', signal: AbortSignal.timeout(70_000) });
+        const j = (await r.json()) as { forge: boolean; model: string | null };
+        this.online = !!j.forge;
+        this.model = j.model;
+        return;
+      } catch {
+        this.online = false;
+        await new Promise((res) => setTimeout(res, 15_000));
+      }
     }
   }
 
@@ -71,12 +79,13 @@ export class ForgeClient {
       return p ? { spec: p.spec, potency: 1, state: 'single' } : null;
     }
     const known = this.codex.get(key);
-    if (known?.spec && (known.status === 'ready' || !this.online)) {
+    // online is null while the first health check is still waiting on a waking server: try the forge.
+    if (known?.spec && (known.status === 'ready' || this.online === false)) {
       return { spec: known.spec, potency: known.potency, state: known.status === 'ready' ? 'ready' : known.status === 'offline' ? 'offline' : 'provisional' };
     }
     const powers = t.sockets.map((s) => POWER_BY_ID.get(s)!);
     const offline = offlineFusion(t.def, powers, key);
-    if (this.online) {
+    if (this.online !== false) {
       void this.forge(key);
       return { spec: known?.spec ?? offline, potency: known?.potency ?? 0.9, state: 'forging' };
     }

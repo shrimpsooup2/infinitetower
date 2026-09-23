@@ -25,14 +25,14 @@ if (!keys.length) {
     const a = POWERS[Math.floor(Math.random() * POWERS.length)];
     const b = POWERS[Math.floor(Math.random() * POWERS.length)];
     const k = fusionKey(t.id, [a.id, b.id]);
-    if (a !== b && !app.store.get(k)) seen.add(k);
+    if (a !== b && !seen.has(k) && !(await app.store.get(k))) seen.add(k);
   }
   keys = [...seen];
 }
 console.log(`Forging ${keys.length} fusion(s) with ${cfg.llm}${cfg.llm === 'ollama' ? ` (${cfg.ollamaModel})` : ''}...`);
 const t0 = Date.now();
 const results = await Promise.all(keys.map(async (k) => {
-  const r = app.forge.request(k, false);
+  const r = await app.forge.request(k, false);
   if (!r.job) return r.row;
   try {
     return await r.job.promise;

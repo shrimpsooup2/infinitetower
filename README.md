@@ -51,7 +51,8 @@ screenshots of every screen.
 
 ## Putting it online
 
-The game can be published on **GitHub Pages**, with a small backend holding your Ollama key.
+The game can be published for free: **GitHub Pages** for the game, a free **Render**
+server holding your Ollama key, and **Firebase Firestore** for the shared fusion database.
 The key never goes into the site. See **[docs/deploy.md](docs/deploy.md)** for the steps.
 
 ## Layout
@@ -62,7 +63,7 @@ src/effects/    the effect language: types, schema, validator, runtime, VFX libr
                 describer, lint, offline combiner
 src/content/    towers, powers, enemies, waves, maps, packs, rarities, rules
 src/balance/    benchmark scenarios and the potency solver
-src/server/     HTTP server, SQLite store, the forge (prompt, Ollama client, pipeline)
+src/server/     HTTP server, fusion stores (SQLite / Firestore), the forge (prompt, Ollama client, pipeline)
 src/client/     Canvas renderer, UI, tutorial, audio, local storage, forge client
 tests/          node:test suites
 tools/          playtest bot, pregen, screenshots
@@ -75,4 +76,4 @@ tools/          playtest bot, pregen, screenshots
 | [docs/game-design.md](docs/game-design.md) | The game: loop, towers, cards and packs, enemies by dimension, campaign, economy, tutorial, art direction |
 | [docs/fusion-system.md](docs/fusion-system.md) | Fusions: ordered combos, the effect and VFX language, the forge pipeline, balance by simulation, lineage, storage and API |
 | [docs/architecture-and-roadmap.md](docs/architecture-and-roadmap.md) | The zero-dependency stack, module map, determinism, testing, deployment, what's next |
-| [docs/deploy.md](docs/deploy.md) | Going public: GitHub Pages for the game, a backend for the key, spend caps |
+| [docs/deploy.md](docs/deploy.md) | Going public for free: GitHub Pages, Render and Firebase, plus spend caps |

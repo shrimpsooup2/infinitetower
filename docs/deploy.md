@@ -1,95 +1,96 @@
-# Putting Infinite Tower online
-
-The public game has two parts:
+# Putting Infinite Tower online (for free)
 
 ```
-players' browsers ──► GitHub Pages (the game: static files, free)
+players' browsers ──► GitHub Pages ─ the game (static files)                    free
         │
-        └────────────► forge backend (Node + SQLite) ──► Ollama cloud
-                          holds OLLAMA_API_KEY as a secret
+        └────────────► Render ─ the forge (Node), holds OLLAMA_API_KEY          free plan
+                          │
+                          ├──► Ollama cloud ─ designs new fusions               your key
+                          └──► Firebase Firestore ─ the shared fusion database  free (Spark)
 ```
 
-- **GitHub Pages** hosts the game. It is only static files, so it can't hold a secret:
-  anything in a Pages site can be read by anyone.
-- **The forge backend** is this repo's Node server. It keeps your Ollama key private, calls
-  the model, balances fusions and stores the shared fusion database. Players never see the
-  key. The site only calls the backend's `/api/...` endpoints.
-- The backend also serves the whole game at its own URL. So Pages is optional: you can share
-  the backend URL on its own if you prefer.
-- If the backend is down or out of budget, the game keeps working with offline fusions.
+- **GitHub Pages** hosts the game. It's public static files, so it never holds the key.
+- **Render** runs the forge server with your key as a secret. Players only ever talk to its
+  `/api/...` endpoints.
+- **Firestore** keeps every fusion, discovery number and generation log. Render's free
+  servers lose their disk on each restart, so the data lives in Firebase instead.
+- If any piece is down or out of quota, the game keeps working with offline fusions.
 
-## 1. Deploy the backend
+It takes about 15 minutes, all in the browser.
 
-It needs a host that runs a Docker container (the repo has a `Dockerfile`) with a
-**persistent volume** mounted at `/data`, which is where the fusion database lives.
+## 1. Firebase: the database
 
-### Railway (easiest, all in the browser)
+1. Go to [console.firebase.google.com](https://console.firebase.google.com) → **Add project**
+   (Google Analytics can be off). New projects are on the free **Spark** plan, with no card.
+2. **Build → Firestore Database → Create database.** Pick a location near your players and
+   start in **production mode**. Production rules block all browser access, which is what
+   we want: only the server reads and writes, using a service account.
+3. **Project settings** (the gear icon) → **Service accounts → Generate new private key.**
+   A `.json` file downloads. Treat it like a password: it gives full access to the database.
 
-1. railway.com → **New Project → Deploy from GitHub repo** → pick `infinitetower`. It finds
-   the `Dockerfile` and builds it.
-2. Open the service → **Variables** and add:
+## 2. Render: the forge server
 
-   | Name | Value |
-   | --- | --- |
-   | `OLLAMA_API_KEY` | your key |
-   | `CORS_ORIGINS` | `https://<your-github-name>.github.io` |
-   | `TRUST_PROXY` | `1` |
-   | `FORGE_DAILY_CAP` | `500` (new AI fusions per day across all players; lower to spend less) |
-   | `OLLAMA_MODEL` | optional, default `gpt-oss:120b` |
+1. Go to [render.com](https://render.com) and sign up with GitHub. The free plan covers one
+   always-available web service. Check their current terms.
+2. **New → Blueprint** → pick the `infinitetower` repo. Render reads `render.yaml` and asks
+   for two values:
+   - `OLLAMA_API_KEY`: your Ollama key.
+   - `FIREBASE_SERVICE_ACCOUNT`: open the downloaded `.json` file and paste its whole
+     contents. If the field mangles it, paste a base64 version instead (`base64 -w0 key.json`
+     on Linux, `base64 -i key.json` on a Mac). Both work.
+3. **Apply.** When it's live you get a URL like `https://infinitetower-forge.onrender.com`.
+   Open `<that URL>/api/health` and check for `"forge":true`.
+   - The blueprint already allows `https://shrimpsooup2.github.io` to call it
+     (`CORS_ORIGINS`), and caps new AI fusions at 500 a day (`FORGE_DAILY_CAP`).
+   - Free Render servers **sleep after ~15 minutes without visitors**. The next visitor
+     wakes the server, which takes up to about a minute. The game is playable the whole
+     time, and their fusions arrive once the server is awake.
 
-3. Right-click the service → **Attach volume**, with mount path `/data`.
-4. **Settings → Networking → Generate Domain.** Copy the URL, for example
-   `https://infinitetower-production.up.railway.app`.
-5. Open `<that URL>/api/health`. You should see `"forge":true`.
+## 3. GitHub Pages: the game
 
-### Fly.io (command line)
-
-```sh
-fly launch --no-deploy                 # accept the Dockerfile; internal port 8787
-fly volumes create data --size 1
-# add to fly.toml:
-#   [mounts]
-#   source = "data"
-#   destination = "/data"
-fly secrets set OLLAMA_API_KEY=... CORS_ORIGINS=https://<your-github-name>.github.io TRUST_PROXY=1
-fly deploy
-```
-
-Any other Docker host works the same way: set the variables above, mount `/data`, and
-expose port 8787 (or set `PORT`). Hosts without persistent disks lose every fusion on each
-redeploy, so avoid them for the backend.
-
-## 2. Publish the game on GitHub Pages
-
-1. In the GitHub repo: **Settings → Pages → Build and deployment → Source: GitHub
-   Actions**.
+1. GitHub repo → **Settings → Pages → Build and deployment → Source: GitHub Actions**.
 2. **Settings → Secrets and variables → Actions → Variables → New repository variable:**
-   `API_BASE` = the backend URL from step 1 (no trailing slash). This is a *variable*, not a
-   secret, because it's just an address. The key never goes to GitHub.
-3. **Actions → "Deploy game to GitHub Pages" → Run workflow.** It also runs on every push to
-   `main` or the development branch. It runs the tests, builds the site with
-   `tools/build.ts`, and publishes it.
-4. The game is live at `https://<your-github-name>.github.io/infinitetower/`.
+   `API_BASE` = the Render URL from step 2 (no trailing slash). It's just an address, not a
+   secret.
+3. **Actions → "Deploy game to GitHub Pages" → Run workflow.** It also runs on every push. It
+   tests, builds with `tools/build.ts` and publishes to
+   **https://shrimpsooup2.github.io/infinitetower/**.
 
 To try the static build locally:
 `API_BASE=http://localhost:8787 npm run build && python3 -m http.server -d dist`.
 
-## 3. Keep the bill in check
+## Staying inside the free limits
 
-Every new fusion costs a model call, usually a few, counting repairs. Stored fusions are
-free to hand out. The limits:
+| Service | Free allowance | What happens at the limit |
+| --- | --- | --- |
+| Firestore (Spark) | 50,000 reads, 20,000 writes per day, 1 GiB stored | API calls fail until the daily reset, and players get offline fusions |
+| Render (free) | One web service; sleeps when idle | Slower first load after a quiet spell |
+| Ollama cloud | Whatever your plan includes | Capped by the settings below |
 
-- `FORGE_DAILY_CAP`: new generations per UTC day across everyone. Once it's reached,
-  players get offline fusions until the next day.
-- `FORGE_RATE_LIMIT`: new generations per player IP per hour (default 60).
-- `FORGE_CONCURRENCY`: parallel model calls (default 2).
-- Also set a spending limit in your Ollama account if it offers one.
-- `npm run pregen -- 50` (run against the backend's database) pre-forges fusions, so early
-  players meet existing ones.
+The server is built to be frugal:
+
+- It caches the title-screen stats.
+- It stores specs compactly.
+- It only reads the documents a fusion needs.
+
+Knobs, all set as variables on Render:
+
+- `FORGE_DAILY_CAP` (default 500): new AI fusions per day across everyone. Stored fusions are
+  free to hand out again.
+- `FORGE_RATE_LIMIT` (default 60): new AI fusions per player per hour.
+- `FORGE_CONCURRENCY` (default 2): model calls at once.
+
+## Other ways to run the backend
+
+The same server runs on any Docker host (`Dockerfile`), such as Railway or Fly.io. Without
+`FIREBASE_SERVICE_ACCOUNT` it uses a local SQLite file at `DB_PATH`, which then needs a
+persistent volume mounted at `/data`. With `FIREBASE_SERVICE_ACCOUNT` set, it needs no disk
+at all.
 
 ## Keys and safety
 
-- The key only ever lives in the backend host's variables (or a local `.env`, which git
-  ignores). Never put it in the repo, the Pages site or `API_BASE`.
-- If a key ever leaks, revoke it in your Ollama account settings and set the new one on the
-  backend. Nothing else needs to change.
+- Your Ollama key and the Firebase service account only ever live in Render's environment
+  (or a local `.env`, which git ignores). Never put them in the repo, the Pages site or
+  `API_BASE`.
+- If either one leaks, revoke it (Ollama account settings, or Firebase → Service accounts →
+  manage keys in Google Cloud) and paste the new one into Render. Nothing else changes.

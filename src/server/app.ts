@@ -5,7 +5,8 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { readFile, stat } from 'node:fs/promises';
 import { extname, join, normalize, resolve, sep } from 'node:path';
 import { stripTypeScriptTypes } from 'node:module';
-import { Store } from './db.ts';
+import { SqliteStore, type FusionStore, type StoreStats } from './db.ts';
+import { FirestoreStore, parseServiceAccount } from './firestore.ts';
 import { Forge, toDTO } from './forge/pipeline.ts';
 import { Balancer } from './forge/balancer.ts';
 import { MockLLM, OllamaLLM, type LLM } from './forge/llm.ts';
@@ -14,6 +15,8 @@ import { TOTAL_FUSIONS } from '../effects/keys.ts';
 export interface AppConfig {
   root: string;
   dbPath: string;
+  /** Firebase service account JSON (raw or base64). When set, fusions live in Firestore instead of SQLite. */
+  firebaseServiceAccount: string | null;
   llm: 'ollama' | 'mock' | 'none';
   ollamaHost: string;
   ollamaKey: string | null;
@@ -40,6 +43,7 @@ export function configFromEnv(root: string): AppConfig {
   return {
     root,
     dbPath: env.DB_PATH || join(root, 'data', 'infinitetower.db'),
+    firebaseServiceAccount: env.FIREBASE_SERVICE_ACCOUNT || null,
     llm: provider,
     ollamaHost: host,
     ollamaKey: key,
@@ -70,13 +74,17 @@ const TYPES: Record<string, string> = {
 
 export interface App {
   server: Server;
-  store: Store;
+  store: FusionStore;
   forge: Forge;
   close(): Promise<void>;
 }
 
-export function createApp(cfg: AppConfig): App {
-  const store = new Store(cfg.dbPath);
+export function openStore(cfg: AppConfig): FusionStore {
+  if (cfg.firebaseServiceAccount) return new FirestoreStore(parseServiceAccount(cfg.firebaseServiceAccount));
+  return new SqliteStore(cfg.dbPath);
+}
+
+export function createApp(cfg: AppConfig, store: FusionStore = openStore(cfg)): App {
   let llm: LLM | null = null;
   if (cfg.llm === 'mock') llm = new MockLLM();
   else if (cfg.llm === 'ollama') {
@@ -88,7 +96,9 @@ export function createApp(cfg: AppConfig): App {
   const forge = new Forge(store, llm, balancer, { concurrency: cfg.concurrency, maxRepairs: cfg.maxRepairs, noveltyLimit: 0.85 });
   const stripCache = new Map<string, { mtime: number; body: Buffer }>();
   const rate = new Map<string, number[]>();
-  const retryTimer = setInterval(() => forge.retryOneProvisional(), 10 * 60_000);
+  const retryTimer = setInterval(() => {
+    forge.retryOneProvisional().catch((e: Error) => console.error('[forge] retry failed:', e.message));
+  }, 10 * 60_000);
   retryTimer.unref();
 
   const root = resolve(cfg.root);
@@ -181,9 +191,20 @@ export function createApp(cfg: AppConfig): App {
     return txt ? (JSON.parse(txt) as Record<string, unknown>) : {};
   }
 
-  function forgeStatus(key: string, token: string | null) {
+  // The title screen asks for stats on every visit; keep hosted databases' read quotas for real work.
+  let statsCache: { at: number; value: StoreStats } | null = null;
+  async function stats(): Promise<StoreStats> {
+    if (!statsCache || Date.now() - statsCache.at > 30_000) statsCache = { at: Date.now(), value: await store.stats() };
+    return statsCache.value;
+  }
+
+  function bump(key: string): void {
+    store.bumpForged(key).catch((e: Error) => console.error('[store] bump failed:', e.message));
+  }
+
+  async function forgeStatus(key: string, token: string | null) {
     const job = forge.jobs.get(key);
-    const row = store.get(key);
+    const row = await store.get(key);
     if (job && job.stage !== 'done' && job.stage !== 'failed') {
       return { status: job.stage, position: forge.queuePosition(job), attempt: job.attempt, fusion: row ? toDTO(row) : null };
     }
@@ -198,7 +219,7 @@ export function createApp(cfg: AppConfig): App {
       return json(res, 200, { ok: true, forge: forge.enabled, model: llm?.name ?? null });
     }
     if (path === '/api/stats' && req.method === 'GET') {
-      const s = store.stats();
+      const s = await stats();
       return json(res, 200, { ...s, total: TOTAL_FUSIONS, forge: forge.enabled, model: llm?.name ?? null });
     }
     if (path === '/api/forge' && req.method === 'POST') {
@@ -210,26 +231,26 @@ export function createApp(cfg: AppConfig): App {
       }
       const key = String(b.key ?? '');
       if (!forge.resolve(key)) return json(res, 400, { error: 'invalid fusion key' });
-      const existing = store.get(key);
+      const existing = await store.get(key);
       if (existing && existing.status === 'ready') {
-        store.bumpForged(key);
+        bump(key);
         return json(res, 200, { status: 'ready', fusion: toDTO(existing) });
       }
       if (!forge.jobs.has(key) && forge.enabled) {
         if (!allow(req)) return json(res, 429, { status: 'rate_limited', fusion: existing ? toDTO(existing) : null });
         if (!dailyOk()) return json(res, 429, { status: 'daily_cap', fusion: existing ? toDTO(existing) : null });
       }
-      const r = forge.request(key, true);
+      const r = await forge.request(key, true);
       if (!r.job) {
         return json(res, 200, { status: forge.enabled ? (r.row?.status ?? 'unknown') : 'unavailable', fusion: r.row ? toDTO(r.row) : null });
       }
-      store.bumpForged(key);
-      return json(res, 202, { ...forgeStatus(key, r.token), token: r.token });
+      bump(key);
+      return json(res, 202, { ...(await forgeStatus(key, r.token)), token: r.token });
     }
     if (path === '/api/forge' && req.method === 'GET') {
       const key = url.searchParams.get('key') ?? '';
       if (!forge.resolve(key)) return json(res, 400, { error: 'invalid fusion key' });
-      return json(res, 200, forgeStatus(key, url.searchParams.get('token')));
+      return json(res, 200, await forgeStatus(key, url.searchParams.get('token')));
     }
     return json(res, 404, { error: 'not found' });
   }
@@ -257,7 +278,7 @@ export function createApp(cfg: AppConfig): App {
       clearInterval(retryTimer);
       await new Promise<void>((r) => server.close(() => r()));
       await balancer.close();
-      store.close();
+      await store.close();
     },
   };
 }
