@@ -1,89 +1,124 @@
-// Budget-based wave generator. Deterministic per (map, wave number), so each
-// map's 40 waves are fixed and balanceable, and endless waves can be produced
-// on demand. New enemy types get an "introduction" wave where they star alone.
+// Budget-based wave generator. Deterministic per (map, wave number): each
+// map's waves are fixed and balanceable, and endless waves can be produced on
+// demand. Waves 1-20 are Flatland (2D), 21-40 Solidspace (3D), 41-60
+// Hyperspace (4D). New shapes get an introduction wave where they star.
+// The HP budget grows ~15% per wave: fusions are how you keep up.
 
-import type { EnemyDef, MapDef, SpawnGroup, WaveDef } from '../sim/types.ts';
+import type { EnemyDef, MapDef, SpawnGroup, SpawnMod, WaveDef } from '../sim/types.ts';
 import { DAMAGE_TYPES } from '../effects/types.ts';
-import { ENEMIES, ENEMY_BY_ID, BOSS_WAVES } from './enemies.ts';
+import { ENEMY_BY_ID, BOSS_WAVES, INTRO, dimensionOf } from './enemies.ts';
 import { RULES } from './rules.ts';
 import { Rng } from '../sim/rng.ts';
 import { hashString } from '../sim/math.ts';
 
-const FILLER = ['square', 'crasher', 'mini'];
 const ENDLESS_MUTATORS = ['shielded', 'swift', 'regen', 'armored', 'swarm'];
 
+/** Total enemy HP (before the wave HP multiplier and difficulty) a wave is built from. */
 export function waveBudget(n: number): number {
-  return 7 + 2.4 * (n - 1) + 0.035 * (n - 1) * (n - 1);
+  return 260 * Math.pow(1.13, n - 1);
 }
 
-function interval(def: EnemyDef): number {
-  if (def.id === 'mini') return 0.28;
-  if (def.traits.includes('elite') || def.cost >= 8) return 2.2;
-  return Math.max(0.35, Math.min(1.5, 0.9 / def.speed));
+export const MOD_HP: Record<SpawnMod, number> = { swarm: 0.3, flying: 0.8, swift: 0.7, elite: 3, stealth: 0.9 };
+
+function introduced(n: number): EnemyDef[] {
+  return INTRO.filter(([, w]) => w <= n).map(([id]) => ENEMY_BY_ID.get(id)!);
 }
 
-function group(def: EnemyDef, count: number, delay: number, path: number): SpawnGroup {
-  return { enemy: def.id, count: Math.max(1, Math.round(count)), interval: interval(def), delay, path };
+function unitHp(def: EnemyDef, mods: SpawnMod[]): number {
+  return def.hp * mods.reduce((a, m) => a * MOD_HP[m], 1) + def.shield * 0.6;
+}
+
+function interval(def: EnemyDef, mods: SpawnMod[]): number {
+  if (mods.includes('swarm')) return 0.22;
+  let base = Math.max(0.35, Math.min(1.6, (0.55 + def.size * 1.5) / def.speed));
+  if (mods.includes('elite')) base *= 1.8;
+  if (mods.includes('swift')) base *= 0.7;
+  return base;
 }
 
 export function generateWave(map: MapDef, n: number): WaveDef {
   const rng = new Rng(hashString(`${map.id}:${map.seed}:${n}`));
   const budget = waveBudget(n);
-  const pool = ENEMIES.filter((e) => e.intro > 0 && e.intro <= n);
+  const dim = dimensionOf(Math.min(n, 60));
+  const pool = introduced(n);
+  const current = pool.filter((e) => e.dim === dim);
+  const older = pool.filter((e) => e.dim < dim);
   const groups: SpawnGroup[] = [];
-  const pathCount = map.paths.length;
-  const airCount = map.air.length;
-  let pathToggle = rng.int(0, Math.max(0, pathCount - 1));
-  const pickPath = (def: EnemyDef): number => {
-    if (def.traits.includes('flying')) return rng.int(0, airCount - 1);
+  let pathToggle = rng.int(0, Math.max(0, map.paths.length - 1));
+  const pickPath = (flying: boolean): number => {
+    if (flying) return rng.int(0, Math.max(1, map.air.length) - 1);
     if (map.pathMode === 'alternate') return -1;
-    if (map.pathMode === 'per_group') return (pathToggle++) % pathCount;
+    if (map.pathMode === 'per_group') return (pathToggle++) % map.paths.length;
     return 0;
   };
   let t = 0;
-  const add = (def: EnemyDef, pts: number) => {
-    const count = Math.max(1, pts / Math.max(0.3, def.cost));
-    const g = group(def, count, t, pickPath(def));
+  const add = (def: EnemyDef, pts: number, mods: SpawnMod[] = []) => {
+    let count = pts / unitHp(def, mods);
+    if (count > 45 && !mods.includes('swarm') && !mods.includes('elite')) {
+      mods = [...mods, 'elite'];
+      count = pts / unitHp(def, mods);
+    }
+    const g: SpawnGroup = {
+      enemy: def.id, count: Math.max(1, Math.min(60, Math.round(count))), interval: interval(def, mods), delay: t,
+      path: pickPath(def.traits.includes('flying') || mods.includes('flying')), mods,
+    };
     groups.push(g);
-    // Next group starts partway through this one so waves feel continuous.
-    t += g.count * g.interval * 0.55 + 1;
+    t += g.count * g.interval * 0.6 + 1.2;
+  };
+  const randomMods = (def: EnemyDef): SpawnMod[] => {
+    const m: SpawnMod[] = [];
+    if (n >= 5 && !def.traits.includes('flying') && rng.chance(0.16)) m.push('flying');
+    if (n >= 3 && def.hp * (dim === 2 ? 1 : 0.2) < 200 && rng.chance(0.14)) m.push('swarm');
+    else if (n >= 10 && rng.chance(0.12)) m.push('elite');
+    if (n >= 8 && rng.chance(0.12)) m.push('swift');
+    if (n >= 24 && rng.chance(0.1)) m.push('stealth');
+    return m;
   };
 
   const boss = BOSS_WAVES[n] ?? null;
   if (boss) {
-    // Escorts first, then the boss.
-    const escorts = rng.shuffle(pool.filter((e) => e.cost <= 4)).slice(0, 2);
-    for (const e of escorts) add(e, budget * 0.25);
-    groups.push({ enemy: boss, count: 1, interval: 1, delay: t + 2, path: map.pathMode === 'first' ? 0 : pickPath(ENEMY_BY_ID.get(boss)!) });
+    const escorts = rng.shuffle([...current]).slice(0, 2);
+    for (const e of escorts) add(e, budget * 0.25, randomMods(e));
+    const bdef = ENEMY_BY_ID.get(boss)!;
+    groups.push({ enemy: boss, count: 1, interval: 1, delay: t + 2, path: pickPath(false), mods: [] });
+    void bdef;
   } else {
-    const intro = pool.filter((e) => e.intro === n);
-    if (intro.length) {
-      add(ENEMY_BY_ID.get(FILLER[rng.int(0, Math.min(n >= 5 ? 2 : 1, 2))])!, budget * 0.35);
-      for (const e of intro) add(e, (budget * 0.65) / intro.length);
+    const fresh = current.filter((e) => e.intro === n);
+    if (fresh.length) {
+      // Introduction wave: the newcomer stars on its own, then a little support.
+      for (const e of fresh) add(e, (budget * 0.65) / fresh.length);
+      const support = current.filter((e) => e.intro < n);
+      if (support.length) add(rng.pick(support), budget * 0.35);
+      else add(fresh[0], budget * 0.35, n >= 3 ? ['swarm'] : []);
     } else if (n % 5 === 0) {
-      // Rush wave: lots of fast or swarming enemies.
-      const fast = pool.filter((e) => e.traits.includes('fast') || e.id === 'mini' || e.traits.includes('flying'));
-      for (const e of rng.shuffle(fast).slice(0, 2)) add(e, budget * 0.5);
+      // Rush wave: fast, flying or swarming variants.
+      const theme: SpawnMod = rng.pick(n >= 8 ? ['swift', 'flying', 'swarm'] as SpawnMod[] : ['swarm'] as SpawnMod[]);
+      const cand = rng.shuffle([...current]).slice(0, 2);
+      for (const e of cand) add(e, budget * 0.5, [theme]);
     } else {
-      const k = n < 8 ? 2 : rng.int(2, 3);
-      const recent = pool.filter((e) => n - e.intro < 8 && e.cost < 8);
-      const chosen = new Set<EnemyDef>();
-      while (chosen.size < k && chosen.size < pool.length) {
-        const src = recent.length && rng.chance(0.55) ? recent : pool;
+      const recent = current.filter((e) => n - e.intro < 7);
+      const k = n < 6 ? 2 : rng.int(2, 3);
+      const chosen = new Map<string, EnemyDef>();
+      for (let guard = 0; chosen.size < k && guard < 20; guard++) {
+        const src = recent.length && rng.chance(0.6) ? recent : current;
         const e = rng.pick(src);
-        if (e.cost >= 8 && (n < e.intro + 3 || rng.chance(0.6))) continue;
-        chosen.add(e);
+        chosen.set(e.id, e);
       }
-      const shares = [...chosen].map(() => rng.range(0.6, 1.4));
+      const list = [...chosen.values()];
+      const shares = list.map(() => rng.range(0.6, 1.4));
+      const oldShare = older.length && rng.chance(0.5) ? 0.2 : 0;
       const total = shares.reduce((a, b) => a + b, 0);
-      [...chosen].forEach((e, i) => add(e, (budget * shares[i]) / total));
+      list.forEach((e, i) => add(e, (budget * (1 - oldShare) * shares[i]) / total, randomMods(e)));
+      if (oldShare) {
+        const o = rng.pick(older.slice(-6));
+        add(o, budget * oldShare, rng.chance(0.5) ? ['swarm'] : ['elite']);
+      }
     }
-    if (n >= 15 && n % 10 === 5) add(ENEMY_BY_ID.get('juggernaut')!, 16);
   }
 
   const mutators: string[] = [];
-  if (n > RULES.waves) {
-    const k = Math.floor((n - RULES.waves - 1) / 5) + 1;
+  if (n > 60) {
+    const k = Math.floor((n - 61) / 5) + 1;
     const mrng = new Rng(hashString(`${map.id}:mutators`));
     const order = mrng.shuffle([...ENDLESS_MUTATORS]);
     for (let i = 0; i < k; i++) mutators.push(order[i % order.length]);
@@ -100,9 +135,15 @@ export function generateWave(map: MapDef, n: number): WaveDef {
   };
 }
 
-/** Summary for the next-wave preview: enemy id -> count. */
-export function waveSummary(w: WaveDef): { enemy: string; count: number }[] {
-  const m = new Map<string, number>();
-  for (const g of w.groups) m.set(g.enemy, (m.get(g.enemy) ?? 0) + g.count);
-  return [...m.entries()].map(([enemy, count]) => ({ enemy, count }));
+/** Summary for the next-wave preview: enemy id -> count, with modifiers. */
+export function waveSummary(w: WaveDef): { enemy: string; count: number; mods: SpawnMod[] }[] {
+  const m = new Map<string, { enemy: string; count: number; mods: SpawnMod[] }>();
+  for (const g of w.groups) {
+    const key = g.enemy + ':' + (g.mods ?? []).join(',');
+    const cur = m.get(key);
+    const count = g.count;
+    if (cur) cur.count += count;
+    else m.set(key, { enemy: g.enemy, count, mods: g.mods ?? [] });
+  }
+  return [...m.values()];
 }

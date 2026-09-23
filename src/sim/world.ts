@@ -3,8 +3,10 @@
 // server's balance solver and the headless playtest bot all run this.
 
 import type {
-  DifficultyDef, Drone, Enemy, FxEvent, MapDef, Palette3, Projectile, SpecRuntime, SpecState, TargetMode, Tower, WaveDef, Zone,
+  Card, DifficultyDef, Drone, Enemy, FxEvent, MapDef, Palette3, Projectile, SpecRuntime, SpecState, TargetMode, Tower, WaveDef, Zone,
 } from './types.ts';
+import { POWER_MIN_RARITY, rarityFactor, rollRarity } from '../content/rarity.ts';
+import { PACK_BY_ID, PACK_EVERY, SCRAP_VALUE, type PackDef } from '../content/packs.ts';
 import type { FusionSpec, VfxDef } from '../effects/types.ts';
 import { Path } from './path.ts';
 import { Rng } from './rng.ts';
@@ -40,7 +42,8 @@ export interface WorldOptions {
   seed?: number;
   waves?: WaveDef[];
   fx?: boolean;
-  draft?: boolean;
+  /** Give the starter pack (default true). */
+  packs?: boolean;
   specProvider?: SpecProvider;
   startGold?: number;
   autoStart?: boolean;
@@ -64,11 +67,11 @@ interface RecentDeath {
   revived: boolean;
 }
 
-export interface Draft {
-  options: string[];
-  rerolls: number;
-  boss: boolean;
-  afterWave: number;
+/** An unopened card pack. */
+export interface PackInst {
+  uid: number;
+  type: PackDef['id'];
+  wave: number;
 }
 
 export type Phase = 'build' | 'running' | 'victory' | 'defeat';
@@ -118,8 +121,8 @@ export class World {
   countdown: number | null = null;
   autoStart: boolean;
   phase: Phase = 'build';
-  cards: string[] = [];
-  draft: Draft | null = null;
+  cards: Card[] = [];
+  packs: PackInst[] = [];
   fx: FxEvent[] = [];
   fxOn: boolean;
   scheduled: unknown[] = [];
@@ -171,10 +174,10 @@ export class World {
     this.fxOn = o.fx ?? true;
     this.autoStart = o.autoStart ?? true;
     this.fixedWaves = o.waves ?? null;
-    if (this.fixedWaves) this.totalWaves = this.fixedWaves.length;
+    this.totalWaves = this.fixedWaves ? this.fixedWaves.length : o.map.waves;
     this.specProvider = o.specProvider ?? defaultSpecProvider;
     this.emptyRt = compileSpec({ dsl: 1, concept: '-', name: '-', flavor: '-', rules: [] }, 'none', 1, this.defaultColors, 'kinetic');
-    if (o.draft !== false) this.offerDraft(0, false);
+    if (o.packs !== false) this.grantPack('starter');
   }
 
   // ------------------------------------------------------------ helpers
@@ -229,7 +232,7 @@ export class World {
     this.gold -= def.cost;
     const t: Tower = {
       id: this.nextId++, def, c, r, x: c + 0.5, y: r + 0.5, tier: 1, angle: -Math.PI / 2, targetMode: 'first', targetId: 0,
-      cooldown: 0, sockets: [], specKey: '', specState: 'none', rt: null, stats: undefined as never, invested: def.cost,
+      cooldown: 0, sockets: [], cards: [], specKey: '', specState: 'none', rt: null, stats: undefined as never, invested: def.cost,
       socketGold: 0, placedTick: this.tick, kills: 0, dmgTotal: 0, dmgWave: 0, attackCount: 0, lastAttackTick: this.tick,
       disabledUntil: 0, barrel: 0, recoil: 0, beamTargets: [], beamRamp: 1, beamTimer: 0, coneOn: false, drones: [], droneTimer: 0.2,
       mods: [], inRange: null, goldWave: 0, livesWave: 0, conduits: [], aura: 0, liveSpawns: 0, eventsThisTick: 0,
@@ -269,7 +272,7 @@ export class World {
     const t = this.towerById.get(id);
     if (!t) return 'No tower';
     this.gold += this.sellValue(t);
-    this.cards.push(...t.sockets);
+    this.cards.push(...t.cards);
     this.towers = this.towers.filter((x) => x !== t);
     this.towerById.delete(id);
     this.grid[t.r * this.cols + t.c] = 0;
@@ -299,28 +302,39 @@ export class World {
     return null;
   }
 
-  socket(id: number, power: string): string | null {
+  /** Socket a card from the hand (by card uid) into the tower's next free socket. */
+  socket(id: number, cardUid: number): string | null {
     const t = this.towerById.get(id);
     if (!t) return 'No tower';
-    const ci = this.cards.indexOf(power);
-    if (ci < 0) return 'You do not hold that power';
+    const ci = this.cards.findIndex((c) => c.uid === cardUid);
+    if (ci < 0) return 'You do not hold that card';
     const block = this.socketBlocker(t);
     if (block) return block;
     const cost = SOCKET_COST[t.sockets.length];
     this.gold -= cost;
     t.socketGold += cost;
-    this.cards.splice(ci, 1);
-    t.sockets.push(power);
+    const [card] = this.cards.splice(ci, 1);
+    t.cards.push(card);
+    t.sockets.push(card.power);
     this.refreshSpec(t);
     return null;
   }
 
+  /** Remove the last socketed card (order matters, so only the last one comes out). */
   unsocket(id: number): string | null {
     const t = this.towerById.get(id);
     if (!t || !t.sockets.length) return 'Nothing to remove';
-    this.cards.push(t.sockets.pop()!);
+    t.sockets.pop();
+    this.cards.push(t.cards.pop()!);
     this.refreshSpec(t);
     return null;
+  }
+
+  /** Add a card to the hand (drafts, tests, tools). */
+  giveCard(power: string, rarity = 0): Card {
+    const c: Card = { uid: this.nextId++, power, rarity };
+    this.cards.push(c);
+    return c;
   }
 
   fusionKeyOf(t: Tower): string {
@@ -351,7 +365,8 @@ export class World {
 
   private setSpec(t: Tower, key: string, spec: FusionSpec, potency: number, state: SpecState): void {
     const oldVars = t.rt?.key === key ? t.rt.vars : null;
-    t.rt = compileSpec(spec, key, potency, colorsFor(t.sockets), t.def.dtype);
+    const rarity = rarityFactor(t.cards.map((c) => c.rarity));
+    t.rt = compileSpec(spec, key, potency * rarity, colorsFor(t.sockets), t.def.dtype);
     if (oldVars) for (const [k, v] of oldVars) if (t.rt.vars.has(k)) t.rt.vars.set(k, v);
     t.specKey = key;
     t.specState = state;
@@ -373,7 +388,7 @@ export class World {
 
   /** Start the next wave. Calling during the countdown pays an early-call bonus. */
   callWave(): string | null {
-    if (this.phase === 'defeat' || this.draft) return 'Not now';
+    if (this.phase === 'defeat') return 'Not now';
     if (this.phase === 'victory' && !this.endless) return 'Victory!';
     if (this.phase === 'running' && this.countdown === null) return 'Wave still arriving';
     if (this.countdown !== null && this.countdown > 0) {
@@ -415,44 +430,66 @@ export class World {
     if (def.boss) this.msg(`Boss incoming: ${def.boss}`, 'bad');
   }
 
-  offerDraft(afterWave: number, boss: boolean): void {
-    const k = boss ? RULES.bossDraftOptions : RULES.draftOptions;
-    const ids = this.rng.shuffle(POWERS.map((p) => p.id)).slice(0, k);
-    this.draft = { options: ids, rerolls: boss ? 1 : 0, boss, afterWave };
+  /** Roll one card whose rarity is at least `floor`. Some powers only exist at high rarities. */
+  rollCard(wave: number, floor: number, exclude: Set<string> = new Set()): Card {
+    const rarity = Math.max(floor, rollRarity(this.rng, wave, false));
+    const eligible = POWERS.filter((p) => (POWER_MIN_RARITY[p.id] ?? 0) <= rarity && !exclude.has(p.id));
+    // Prefer powers that belong to the rolled rarity, so exclusive powers show up in their slots.
+    const exact = eligible.filter((p) => (POWER_MIN_RARITY[p.id] ?? 0) === rarity);
+    const pool = exact.length && this.rng.chance(0.65) ? exact : eligible.length ? eligible : POWERS;
+    const p = this.rng.pick(pool);
+    return { uid: this.nextId++, power: p.id, rarity };
   }
 
-  pickDraft(i: number): string | null {
-    if (!this.draft) return 'No draft';
-    const p = this.draft.options[i];
-    if (!p) return 'Invalid choice';
-    this.cards.push(p);
-    this.draft = null;
-    return null;
+  grantPack(type: PackDef['id']): PackInst {
+    const pk: PackInst = { uid: this.nextId++, type, wave: this.waveN };
+    this.packs.push(pk);
+    return pk;
   }
 
-  rerollDraft(): string | null {
-    if (!this.draft || this.draft.rerolls <= 0) return 'No rerolls left';
-    const d = this.draft;
-    const pool = this.rng.shuffle(POWERS.map((p) => p.id).filter((id) => !d.options.includes(id)));
-    d.options = pool.slice(0, d.options.length);
-    d.rerolls--;
-    return null;
+  /** Open a pack: its cards go straight into the hand. Returns them for the reveal. */
+  openPack(uid: number): Card[] | string {
+    const i = this.packs.findIndex((p) => p.uid === uid);
+    if (i < 0) return 'No such pack';
+    const [pk] = this.packs.splice(i, 1);
+    const def = PACK_BY_ID.get(pk.type)!;
+    const seen = new Set<string>();
+    const cards = def.floors.map((f) => {
+      const c = this.rollCard(Math.max(pk.wave, this.waveN), f, seen);
+      seen.add(c.power);
+      return c;
+    });
+    this.cards.push(...cards);
+    return cards;
   }
 
-  skipDraftGold(): number {
-    return 30 + 5 * this.waveN;
+  packPrice(type: PackDef['id']): number | null {
+    const def = PACK_BY_ID.get(type);
+    return def?.price ? Math.round(def.price(Math.max(1, this.waveN))) : null;
   }
 
-  skipDraft(): void {
-    if (!this.draft) return;
-    this.addGold(this.skipDraftGold());
-    this.draft = null;
+  buyPack(type: PackDef['id']): PackInst | string {
+    const price = this.packPrice(type);
+    if (price === null) return 'That pack cannot be bought';
+    if (this.gold < price) return `Needs ${price} gold`;
+    this.gold -= price;
+    return this.grantPack(type);
+  }
+
+  /** Scrap a card from the hand for gold. */
+  scrapCard(uid: number): number | string {
+    const i = this.cards.findIndex((c) => c.uid === uid);
+    if (i < 0) return 'No such card';
+    const [c] = this.cards.splice(i, 1);
+    const g = SCRAP_VALUE[c.rarity] ?? 10;
+    this.addGold(g);
+    return g;
   }
 
   // ------------------------------------------------------------ tick
 
   step(): void {
-    if (this.phase === 'victory' || this.phase === 'defeat' || this.draft) return;
+    if (this.phase === 'victory' || this.phase === 'defeat') return;
     this.tick++;
     this.time += DT;
     processScheduled(this);
@@ -503,7 +540,7 @@ export class World {
         done = false;
         st.timer -= DT;
         while (st.timer <= 0 && st.spawned < count) {
-          spawnEnemy(this, g.enemy, g.path, a.def.n);
+          spawnEnemy(this, g.enemy, g.path, a.def.n, { mods: g.mods });
           st.spawned++;
           st.timer += g.interval;
         }
@@ -568,13 +605,9 @@ export class World {
       }
       for (const a of e.def.abilities) {
         if (a.kind === 'split') {
+          const mods = e.mods.filter((m) => m !== 'elite');
           for (let i = 0; i < (a.count ?? 2); i++) {
-            spawnEnemy(this, a.enemy ?? 'mini', e.pathIdx, e.waveN, { dist: Math.max(0, e.dist - 0.25 * i), lateral: (i - 0.5) * 0.25 });
-          }
-        } else if (a.kind === 'hydra') {
-          const types = ['fire', 'frost', 'kinetic'] as const;
-          for (let i = 0; i < (a.count ?? 3); i++) {
-            spawnEnemy(this, a.enemy ?? 'hydra_head', e.pathIdx, e.waveN, { dist: Math.max(0, e.dist - 0.4 * i), lateral: (i - 1) * 0.3, resist: { [types[i % 3]]: 0.75 } });
+            spawnEnemy(this, a.enemy ?? 'p3', e.pathIdx, e.waveN, { dist: Math.max(0, e.dist - 0.25 * i), lateral: (i - 0.5) * 0.25, mods });
           }
         }
       }
@@ -611,7 +644,13 @@ export class World {
         this.msg('Victory!', 'good');
         return;
       }
-      if (n % RULES.draftEvery === 0 || BOSS_WAVES[n]) this.offerDraft(n, !!BOSS_WAVES[n]);
+      if (BOSS_WAVES[n]) {
+        this.grantPack('boss');
+        this.msg('Boss defeated: Boss Pack earned!', 'good');
+      } else if (n % PACK_EVERY === 0) {
+        this.grantPack('shape');
+        this.msg('Shape Pack earned!', 'good');
+      }
     }
   }
 
@@ -632,11 +671,11 @@ export class World {
   snapshot(): WorldSave {
     return {
       v: 1, map: this.map.id, difficulty: this.diff.id, seed: this.seed, rng: this.rng.state(), tick: this.tick,
-      gold: this.gold, lives: this.lives, waveN: this.waveN, endless: this.endless, cards: [...this.cards],
-      draft: this.draft ? { ...this.draft, options: [...this.draft.options] } : null, stats: { ...this.stats },
+      gold: this.gold, lives: this.lives, waveN: this.waveN, endless: this.endless, cards: this.cards.map((c) => ({ ...c })),
+      packs: this.packs.map((p) => ({ ...p })), stats: { ...this.stats },
       phase: this.phase, countdown: this.countdown, nextId: this.nextId,
       towers: this.towers.map((t) => ({
-        def: t.def.id, c: t.c, r: t.r, tier: t.tier, sockets: [...t.sockets], targetMode: t.targetMode, invested: t.invested,
+        def: t.def.id, c: t.c, r: t.r, tier: t.tier, cards: t.cards.map((c) => ({ ...c })), targetMode: t.targetMode, invested: t.invested,
         socketGold: t.socketGold, kills: t.kills, dmgTotal: t.dmgTotal, vars: t.rt ? [...t.rt.vars.entries()] : [],
       })),
     };
@@ -649,8 +688,8 @@ export class World {
     this.lives = s.lives;
     this.waveN = s.waveN;
     this.endless = s.endless;
-    this.cards = [...s.cards];
-    this.draft = s.draft;
+    this.cards = s.cards.map((c) => ({ ...c }));
+    this.packs = s.packs.map((p) => ({ ...p }));
     Object.assign(this.stats, s.stats);
     this.nextId = s.nextId;
     this.phase = s.phase === 'running' ? 'running' : s.phase;
@@ -672,7 +711,8 @@ export class World {
       t.dmgTotal = ts.dmgTotal;
       t.placedTick = -1;
       t.stats = baseStats(t);
-      t.sockets = [...ts.sockets];
+      t.cards = ts.cards.map((c) => ({ ...c }));
+      t.sockets = t.cards.map((c) => c.power);
       this.refreshSpec(t);
       if (t.rt) for (const [k, v] of ts.vars) if (t.rt.vars.has(k)) t.rt.vars.set(k, v);
     }
@@ -690,14 +730,14 @@ export interface WorldSave {
   lives: number;
   waveN: number;
   endless: boolean;
-  cards: string[];
-  draft: Draft | null;
+  cards: Card[];
+  packs: PackInst[];
   stats: World['stats'];
   phase: Phase;
   countdown: number | null;
   nextId: number;
   towers: {
-    def: string; c: number; r: number; tier: number; sockets: string[]; targetMode: TargetMode; invested: number;
+    def: string; c: number; r: number; tier: number; cards: Card[]; targetMode: TargetMode; invested: number;
     socketGold: number; kills: number; dmgTotal: number; vars: [string, number][];
   }[];
 }

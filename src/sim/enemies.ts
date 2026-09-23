@@ -1,7 +1,8 @@
 // Enemy spawning, abilities and movement.
 
 import type { World } from './world.ts';
-import type { DamageType, Enemy, EnemyDef } from './types.ts';
+import type { DamageType, Enemy, EnemyDef, SpawnMod } from './types.ts';
+import { MOD_HP } from '../content/waves.ts';
 import { ENEMY_BY_ID } from '../content/enemies.ts';
 import { dealDamage, refreshDerived, tickStatuses, updatePos, pathOf } from './combat.ts';
 import { BUILTIN_VFX } from '../effects/vfxlib.ts';
@@ -16,35 +17,45 @@ export interface SpawnOpts {
   hpFrac?: number;
   resist?: Partial<Record<DamageType, number>>;
   revived?: boolean;
+  mods?: SpawnMod[];
 }
 
 export function spawnEnemy(w: World, defId: string, pathIdx: number, waveN: number, o: SpawnOpts = {}): Enemy | null {
   const def: EnemyDef | undefined = ENEMY_BY_ID.get(defId);
   if (!def) return null;
   const wave = w.getWave(Math.max(1, waveN));
-  const flying = def.traits.includes('flying');
+  const mods = o.mods ?? [];
+  const flying = def.traits.includes('flying') || mods.includes('flying');
   const paths = flying ? w.air : w.paths;
   let pi = pathIdx;
   if (pi < 0) pi = w.alternate++ % paths.length;
   pi = Math.min(paths.length - 1, Math.max(0, pi));
   const mut = wave.mutators;
-  let hp = def.hp * wave.hpMult * w.diff.hp;
+  const modHp = mods.reduce((a, m) => a * MOD_HP[m], 1);
+  let hp = def.hp * wave.hpMult * w.diff.hp * modHp;
   if (mut.includes('swarm')) hp *= 0.7;
   const armor = def.armor + (mut.includes('armored') ? 3 : 0);
-  let shield = def.shield * wave.hpMult * w.diff.hp;
+  let shield = def.shield * wave.hpMult * w.diff.hp * (mods.includes('elite') ? 2 : 1);
   if (mut.includes('shielded')) shield += hp * 0.3;
-  const speed = def.speed * (mut.includes('swift') ? 1.2 : 1);
+  const speed = def.speed * (mut.includes('swift') ? 1.2 : 1) * (mods.includes('swift') ? 1.5 : 1) * (mods.includes('swarm') ? 1.12 : 1);
+  const size = def.size * (mods.includes('swarm') ? 0.6 : 1) * (mods.includes('elite') ? 1.35 : 1);
+  const bountyMult = mods.includes('swarm') ? 0.35 : mods.includes('elite') ? 3 : 1;
   const e: Enemy = {
     id: w.nextId++, def, alive: true, removed: false, pathIdx: pi, air: flying, dist: o.dist ?? 0,
     lateral: o.lateral ?? w.rng.range(-0.16, 0.16) * (flying ? 1.8 : 1), x: 0, y: 0, px: 0, py: 0, heading: 0,
     rot: w.rng.next() * Math.PI * 2, hp: hp * (o.hpFrac ?? 1), maxHp: hp, shield, maxShield: shield, armor, speed,
-    size: def.size, resist: { ...(o.resist ?? {}) }, immune: null, statuses: [], moveMult: 1, dmgTakenMult: 1, armorDelta: 0,
+    size, resist: { ...(o.resist ?? {}) }, immune: null, statuses: [], moveMult: 1, dmgTakenMult: 1, armorDelta: 0,
     hardCC: false, reverse: false, ccImmuneUntil: 0, revealedUntil: 0, burrowed: false, lastHitTick: -9999,
     timers: def.abilities.map((a) => (a.every ?? 1) * w.rng.range(0.35, 1)), phaseHits: null, mimicTally: null,
     hist: new Float32Array(30), histIdx: 0, histTimer: 0, lastRewindTick: -9999, shrunk: false, special: o.revived ? 1 : 0,
-    bounty: def.bounty, lives: def.lives, killer: 0, hitFlash: 0, hitBy: new Set(), spawnTick: w.tick, tenacity: def.tenacity,
+    bounty: Math.max(1, Math.round(def.bounty * bountyMult)), lives: mods.includes('elite') ? def.lives * 2 : def.lives, killer: 0, hitFlash: 0, hitBy: new Set(), spawnTick: w.tick, tenacity: def.tenacity,
     hasteMult: 1, visScale: 1, waveN, zoneSpeed: 1, zoneDmg: 1, hpHist: new Float32Array(6), flying, traitSet: new Set(def.traits),
+    mods,
   };
+  if (flying) e.traitSet.add('flying');
+  if (mods.includes('stealth')) e.traitSet.add('stealth');
+  if (mods.includes('swift')) e.traitSet.add('fast');
+  if (mods.includes('elite')) e.traitSet.add('elite');
   if (shield > 0) e.traitSet.add('shielded');
   for (const a of def.abilities) {
     if (a.kind === 'phase') e.phaseHits = new Map();
@@ -150,13 +161,16 @@ function abilities(w: World, e: Enemy, dt: number): void {
         }
         break;
       }
-      case 'eclipse': {
+      case 'phases': {
         const f = e.hp / e.maxHp;
         if (!(e.special & 4) && f <= 0.66) {
           e.special |= 4;
           e.shield = 0;
           e.maxShield = 0;
-          for (const off of [-0.7, 0.7]) spawnEnemy(w, 'eclipse_clone', e.pathIdx, e.waveN, { dist: Math.max(0, e.dist + off) });
+          const n = a.count ?? 2;
+          for (let k = 0; k < n; k++) {
+            spawnEnemy(w, a.enemy ?? 'p6', e.pathIdx, e.waveN, { dist: Math.max(0, e.dist + (k - (n - 1) / 2) * 0.6), mods: e.air ? ['flying'] : [] });
+          }
           if (w.fxOn) w.vfxAt(BUILTIN_VFX.get('shockwave')!, e.x, e.y, 1.5);
         }
         if (!(e.special & 8) && f <= 0.33) {

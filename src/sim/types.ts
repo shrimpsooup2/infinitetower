@@ -58,7 +58,7 @@ export interface TowerDef {
 export interface EnemyAbility {
   kind:
     | 'heal' | 'blink' | 'burrow' | 'spawn' | 'split' | 'revive' | 'haste_aura' | 'phase' | 'mimic'
-    | 'carapace' | 'stomp' | 'rewind_hp' | 'eclipse' | 'hydra';
+    | 'carapace' | 'stomp' | 'rewind_hp' | 'phases';
   every?: number;
   radius?: number;
   amount?: number;
@@ -67,12 +67,22 @@ export interface EnemyAbility {
   count?: number;
 }
 
-export type EnemyShape = 'square' | 'triangle' | 'pentagon' | 'hexagon' | 'octagon' | 'circle' | 'diamond' | 'star' | 'heptagon';
+export type EnemyShape = 'poly' | 'circle';
+
+/** Per-group spawn modifiers that give any shape a gameplay twist. */
+export type SpawnMod = 'swarm' | 'flying' | 'swift' | 'elite' | 'stealth';
+export const SPAWN_MODS: readonly SpawnMod[] = ['swarm', 'flying', 'swift', 'elite', 'stealth'];
 
 export interface EnemyDef {
   id: string;
   name: string;
   blurb: string;
+  /** 2 = polygon, 3 = polyhedron, 4 = polytope. */
+  dim: 2 | 3 | 4;
+  /** Sides (2D), faces (3D) or cells (4D). 0 = the smooth limit (circle / sphere / glome). */
+  n: number;
+  /** 3D/4D model id for the renderer. */
+  poly?: string;
   shape: EnemyShape;
   color: string;
   hp: number;
@@ -120,6 +130,9 @@ export interface MapDef {
   hpScale: number;
   /** Ground path index per spawn: 'alternate' splits groups between paths. */
   pathMode: 'first' | 'alternate' | 'per_group';
+  /** Campaign act (1 Flatland, 2 Solidspace, 3 Hyperspace) and run length. */
+  act: 1 | 2 | 3;
+  waves: number;
 }
 
 export interface SpawnGroup {
@@ -127,7 +140,8 @@ export interface SpawnGroup {
   count: number;
   interval: number;
   delay: number;
-  path: number; // ground path index, or air lane index if the enemy flies
+  path: number; // ground path index, or air lane index if the enemy flies (-1 = alternate)
+  mods?: SpawnMod[];
 }
 
 export interface WaveDef {
@@ -250,6 +264,7 @@ export interface Enemy {
   hpHist: Float32Array;
   flying: boolean;
   traitSet: Set<string>;
+  mods: SpawnMod[];
 }
 
 export interface TowerStats {
@@ -266,6 +281,13 @@ export interface TowerStats {
   drones: number;
   auraRate: number;
   auraRange: number;
+}
+
+/** A power card in hand or in a socket. */
+export interface Card {
+  uid: number;
+  power: string;
+  rarity: number; // 0 common, 1 rare, 2 epic, 3 legendary
 }
 
 export interface TempMod {
@@ -290,6 +312,7 @@ export interface Tower {
   targetId: number;
   cooldown: number;
   sockets: string[];
+  cards: Card[];
   specKey: string;
   specState: SpecState;
   rt: SpecRuntime | null;

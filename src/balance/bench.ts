@@ -9,7 +9,7 @@ import type { FusionSpec } from '../effects/types.ts';
 import { TOWER_BY_ID } from '../content/towers.ts';
 
 const BENCH_MAP: MapDef = {
-  id: 'bench', name: 'Bench', blurb: '', cols: 14, rows: 11, seed: 7, difficulty: 1, hpScale: 1, pathMode: 'first',
+  id: 'bench', name: 'Bench', blurb: '', cols: 14, rows: 11, seed: 7, difficulty: 1, hpScale: 1, pathMode: 'first', act: 1, waves: 1,
   paths: [[[-1, 3], [9, 3], [9, 8], [-1, 8]]],
   air: [[[-1, 5], [14, 5]]],
   blocked: [],
@@ -22,18 +22,18 @@ const wave = (groups: WaveDef['groups'], hpMult: number): WaveDef => ({
 });
 
 export const SCENARIOS: { id: string; wave: WaveDef }[] = [
-  { id: 'boss', wave: wave([{ enemy: 'juggernaut', count: 1, interval: 1, delay: 0, path: 0 }], 40) },
+  { id: 'boss', wave: wave([{ enemy: 'octahedron', count: 1, interval: 1, delay: 0, path: 0 }], 12) },
   { id: 'swarm', wave: wave([
-    { enemy: 'mini', count: 36, interval: 0.3, delay: 0, path: 0 },
-    { enemy: 'square', count: 12, interval: 0.6, delay: 4, path: 0 },
-  ], 2.5) },
-  { id: 'armored', wave: wave([{ enemy: 'pentagon', count: 12, interval: 1.2, delay: 0, path: 0 }], 2.5) },
+    { enemy: 'p3', count: 36, interval: 0.3, delay: 0, path: 0 },
+    { enemy: 'p4', count: 12, interval: 0.6, delay: 4, path: 0 },
+  ], 3) },
+  { id: 'armored', wave: wave([{ enemy: 'p8', count: 12, interval: 1.2, delay: 0, path: 0 }], 1.4) },
   { id: 'mixed', wave: wave([
-    { enemy: 'square', count: 8, interval: 0.8, delay: 0, path: 0 },
-    { enemy: 'wisp', count: 6, interval: 1, delay: 2, path: 0 },
-    { enemy: 'aegis', count: 4, interval: 1.4, delay: 4, path: 0 },
-    { enemy: 'mender', count: 2, interval: 2, delay: 6, path: 0 },
-  ], 1.6) },
+    { enemy: 'p4', count: 8, interval: 0.8, delay: 0, path: 0 },
+    { enemy: 'p6', count: 6, interval: 1, delay: 2, path: 0, mods: ['flying'] },
+    { enemy: 'p11', count: 4, interval: 1.4, delay: 4, path: 0 },
+    { enemy: 'p13', count: 2, interval: 2, delay: 6, path: 0 },
+  ], 0.7) },
 ];
 
 export interface ScenarioResult {
@@ -48,7 +48,7 @@ export interface ScenarioResult {
 /** Run one scenario and return the tower's contribution. */
 export function runScenario(towerId: string, tier: number, spec: FusionSpec | null, sockets: string[], potency: number, sc: { id: string; wave: WaveDef }): ScenarioResult {
   const w = new World({
-    map: BENCH_MAP, fx: false, draft: false, seed: 1234, waves: [sc.wave], startGold: 1e6, autoStart: false,
+    map: BENCH_MAP, fx: false, packs: false, seed: 1234, waves: [sc.wave], startGold: 1e6, autoStart: false,
     specProvider: spec ? () => ({ spec, potency, state: 'ready' }) : undefined,
   });
   const t = w.place(towerId, TOWER_SPOT[0], TOWER_SPOT[1]);
@@ -124,8 +124,8 @@ export function measure(towerId: string, tier: number, spec: FusionSpec, sockets
 
 export const TARGETS: Record<number, { center: number; tol: number; tier: number }> = {
   1: { center: 1.3, tol: 0.15, tier: 1 },
-  2: { center: 1.6, tol: 0.12, tier: 2 },
-  3: { center: 1.95, tol: 0.12, tier: 3 },
+  2: { center: 1.6, tol: 0.2, tier: 2 },
+  3: { center: 2.0, tol: 0.25, tier: 3 },
 };
 
 export interface SolveResult {
@@ -150,7 +150,9 @@ export function solvePotency(towerId: string, spec: FusionSpec, sockets: string[
   const rHi = at(hi);
   if (rHi.ratio < target.center - target.tol) return { potency: hi, ratio: rHi.ratio, status: 'niche', report: rHi, evaluations: evals };
   const rLo = at(lo);
-  if (rLo.ratio > target.center + target.tol) return { potency: lo, ratio: rLo.ratio, status: 'too_strong', report: rLo, evaluations: evals };
+  // Balance is deliberately loose: only designs that stay wildly overpowered even at 10% are rejected.
+  if (rLo.ratio > target.center * 1.6) return { potency: lo, ratio: rLo.ratio, status: 'too_strong', report: rLo, evaluations: evals };
+  if (rLo.ratio > target.center + target.tol) return { potency: lo, ratio: rLo.ratio, status: 'ok', report: rLo, evaluations: evals };
   let best = { p: hi, r: rHi };
   for (let i = 0; i < 7; i++) {
     const mid = Math.sqrt(lo * hi);

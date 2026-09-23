@@ -12,20 +12,18 @@ export const DIFFICULTY_BY_ID = new Map(DIFFICULTIES.map((d) => [d.id, d]));
 
 export const RULES = {
   tickRate: 60,
-  waves: 40,
+  waves: 60,
   sellRefund: 0.7,
   /** Seconds between a wave finishing spawning and the next one auto-starting. */
   countdown: 15,
   /** Gold per second of countdown skipped by calling a wave early (scaled by wave). */
   earlyCallPerSec: 1.2,
-  clearBonus: (n: number) => 20 + 4 * n,
-  bountyMult: (n: number) => 1 + 0.035 * (n - 1),
-  hpMult: (n: number) => Math.pow(1.09, n - 1) * (n > 40 ? Math.pow(1.03, n - 40) : 1),
+  clearBonus: (n: number) => 20 + 5 * n,
+  bountyMult: (n: number) => 1 + 0.02 * (n - 1),
+  /** Global HP creep on top of the shapes themselves getting bigger. Endless keeps climbing. */
+  hpMult: (n: number) => Math.pow(1.02, n - 1) * (n > 60 ? Math.pow(1.05, n - 60) : 1),
   /** Gold a single tower's effects may grant per wave. */
   towerGoldCap: (n: number) => 30 + 5 * n,
-  draftEvery: 3,
-  draftOptions: 3,
-  bossDraftOptions: 4,
   /** Hard caps that keep any fusion from breaking the game. */
   maxSpawnsPerTower: 60,
   maxEventsPerTowerTick: 64,
