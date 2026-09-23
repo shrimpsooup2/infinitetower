@@ -13,6 +13,7 @@ import { parseKey } from '../effects/keys.ts';
 import { validateSpec } from '../effects/validate.ts';
 import { TOWER_BY_ID } from '../content/towers.ts';
 import type { Codex, CodexEntry } from './storage.ts';
+import { api } from './config.ts';
 
 export interface FusionDTO {
   key: string;
@@ -51,7 +52,7 @@ export class ForgeClient {
 
   async health(): Promise<void> {
     try {
-      const r = await fetch('/api/health', { cache: 'no-store' });
+      const r = await fetch(api('/api/health'), { cache: 'no-store' });
       const j = (await r.json()) as { forge: boolean; model: string | null };
       this.online = !!j.forge;
       this.model = j.model;
@@ -91,12 +92,12 @@ export class ForgeClient {
     if (this.inflight.has(key)) return;
     this.inflight.add(key);
     try {
-      const res = await fetch('/api/forge', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ key }) });
+      const res = await fetch(api('/api/forge'), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ key }) });
       const j = (await res.json()) as { status: string; fusion?: FusionDTO | null; token?: string; position?: number; error?: string };
       if (j.status === 'ready' && j.fusion) return this.land(j.fusion, false);
-      if (j.status === 'unavailable' || j.status === 'rate_limited' || j.error) {
+      if (j.status === 'unavailable' || j.status === 'rate_limited' || j.status === 'daily_cap' || j.error) {
         if (j.fusion) this.land(j.fusion, false);
-        else this.fallback(key, j.status === 'rate_limited' ? 'The forge is busy (rate limited). Using an offline fusion for now.' : 'The forge is offline. Using an offline fusion.');
+        else this.fallback(key, j.status === 'rate_limited' || j.status === 'daily_cap' ? 'The forge is busy. Using an offline fusion for now.' : 'The forge is offline. Using an offline fusion.');
         return;
       }
       await this.poll(key, j.token ?? null);
@@ -112,7 +113,7 @@ export class ForgeClient {
       await new Promise((r) => setTimeout(r, i < 10 ? 1200 : 2000));
       let j: { status: string; fusion?: FusionDTO | null; position?: number; attempt?: number; error?: string };
       try {
-        const r = await fetch(`/api/forge?key=${encodeURIComponent(key)}&token=${encodeURIComponent(token ?? '')}`, { cache: 'no-store' });
+        const r = await fetch(api(`/api/forge?key=${encodeURIComponent(key)}&token=${encodeURIComponent(token ?? '')}`), { cache: 'no-store' });
         j = await r.json();
       } catch {
         continue;
@@ -163,7 +164,7 @@ export class ForgeClient {
 
   async globalStats(): Promise<{ discovered: number; total: number; recent: { no: number; tower: string; powers: string[]; at: number }[] } | null> {
     try {
-      const r = await fetch('/api/stats', { cache: 'no-store' });
+      const r = await fetch(api('/api/stats'), { cache: 'no-store' });
       return await r.json();
     } catch {
       return null;

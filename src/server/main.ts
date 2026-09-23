@@ -17,6 +17,7 @@ app.server.listen(port, host, () => {
   console.log(`Infinite Tower running at http://localhost:${port}`);
   console.log(`  forge: ${forge}`);
   console.log(`  database: ${cfg.dbPath}`);
+  if (cfg.corsOrigins.length) console.log(`  API open to: ${cfg.corsOrigins.join(', ')}`);
 });
 
 for (const sig of ['SIGINT', 'SIGTERM'] as const) {

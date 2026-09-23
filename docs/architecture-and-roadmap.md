@@ -86,7 +86,7 @@ tools/            bot (playtest), pregen (seed the database), screenshot (Playwr
 
 ## 5. Testing and tuning
 
-- `npm test` runs 20 cases:
+- `npm test` runs 24 cases:
   - every authored spec validates;
   - the validator survives 2,000 random fuzz specs;
   - 300 random offline fusions validate;
@@ -97,7 +97,9 @@ tools/            bot (playtest), pregen (seed the database), screenshot (Playwr
   - wave and pack rules hold;
   - polytope vertex, edge and face counts (and Euler's formula) are right;
   - the forge works end to end with the mock model, including numbering, World Firsts,
-    lineage, the provisional fallback and the HTTP API.
+    lineage, the provisional fallback and the HTTP API;
+  - the static build is plain JS with no server code, and the deployment guards (CORS
+    allowlist, daily cap, spoof-proof per-IP limit) hold.
 - `npm run bot -- all normal 2` plays the campaign headlessly and prints the result per map
   (waves reached, lives, towers by tier, fusions, time). Set `BOT_TRACE=1` to also print lives
   per wave and the economy totals. It takes about 2 s per map.
@@ -106,11 +108,16 @@ tools/            bot (playtest), pregen (seed the database), screenshot (Playwr
 
 ## 6. Deployment
 
-One Node process serves the game, the API and the forge, with one SQLite file.
+One Node process serves the game, the API and the forge, with one SQLite file. The public
+setup puts a static build of the game on GitHub Pages (`tools/build.ts`, published by
+`.github/workflows/pages.yml`) and runs this server from the `Dockerfile` as the API, with the
+key as a host secret. See [deploy.md](deploy.md).
 
 - Set `OLLAMA_API_KEY` (and optionally `OLLAMA_MODEL`, `OLLAMA_FORMAT`, `OLLAMA_THINK`).
   `FORGE_CONCURRENCY` limits parallel model calls, `FORGE_RATE_LIMIT` limits new generations
-  per IP per hour, and `BALANCE_WORKERS` sets the solver's thread count.
+  per IP per hour, `FORGE_DAILY_CAP` limits them per day across everyone, and
+  `BALANCE_WORKERS` sets the solver's thread count. For a browser site on another origin,
+  set `CORS_ORIGINS`, and behind a hosting proxy, `TRUST_PROXY=1`.
 - Keep `data/` on a persistent volume. Everything else is stateless.
 - Before launch, `npm run pregen -- N` can seed the database so early players meet existing
   fusions.

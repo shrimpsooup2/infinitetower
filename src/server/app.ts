@@ -24,6 +24,12 @@ export interface AppConfig {
   maxRepairs: number;
   balanceWorkers: number;
   rateLimitPerHour: number;
+  /** New generations allowed per UTC day across all players (protects the API bill). */
+  dailyCap: number;
+  /** Origins allowed to call the API from a browser (e.g. the GitHub Pages site); '*' for any. */
+  corsOrigins: string[];
+  /** Behind a hosting proxy: take the client IP from the last X-Forwarded-For hop. */
+  trustProxy: boolean;
 }
 
 export function configFromEnv(root: string): AppConfig {
@@ -44,6 +50,9 @@ export function configFromEnv(root: string): AppConfig {
     maxRepairs: Number(env.FORGE_MAX_REPAIRS || 3),
     balanceWorkers: Number(env.BALANCE_WORKERS || 1),
     rateLimitPerHour: Number(env.FORGE_RATE_LIMIT || 60),
+    dailyCap: Number(env.FORGE_DAILY_CAP || 500),
+    corsOrigins: (env.CORS_ORIGINS || '').split(',').map((o) => o.trim().replace(/\/+$/, '')).filter(Boolean),
+    trustProxy: /^(1|true|yes)$/i.test(env.TRUST_PROXY || ''),
   };
 }
 
@@ -121,8 +130,33 @@ export function createApp(cfg: AppConfig): App {
   }
 
   function ip(req: IncomingMessage): string {
+    // Only a trusted proxy's own hop (the last one) can't be forged by the client.
     const fwd = req.headers['x-forwarded-for'];
-    return (typeof fwd === 'string' ? fwd.split(',')[0].trim() : '') || req.socket.remoteAddress || '?';
+    const hop = cfg.trustProxy && typeof fwd === 'string' ? fwd.split(',').pop()?.trim() : '';
+    return hop || req.socket.remoteAddress || '?';
+  }
+
+  let day = '';
+  let dayCount = 0;
+  /** Count one new generation against today's global cap; false when it is used up. */
+  function dailyOk(): boolean {
+    const today = new Date().toISOString().slice(0, 10);
+    if (today !== day) {
+      day = today;
+      dayCount = 0;
+    }
+    if (dayCount >= cfg.dailyCap) return false;
+    dayCount++;
+    return true;
+  }
+
+  function cors(req: IncomingMessage, res: ServerResponse): void {
+    const origin = typeof req.headers.origin === 'string' ? req.headers.origin : '';
+    if (!origin) return;
+    if (cfg.corsOrigins.includes('*') || cfg.corsOrigins.includes(origin)) {
+      res.setHeader('access-control-allow-origin', origin);
+      res.setHeader('vary', 'Origin');
+    }
   }
 
   function allow(req: IncomingMessage): boolean {
@@ -181,8 +215,9 @@ export function createApp(cfg: AppConfig): App {
         store.bumpForged(key);
         return json(res, 200, { status: 'ready', fusion: toDTO(existing) });
       }
-      if (!forge.jobs.has(key) && forge.enabled && !allow(req)) {
-        return json(res, 429, { status: 'rate_limited', fusion: existing ? toDTO(existing) : null });
+      if (!forge.jobs.has(key) && forge.enabled) {
+        if (!allow(req)) return json(res, 429, { status: 'rate_limited', fusion: existing ? toDTO(existing) : null });
+        if (!dailyOk()) return json(res, 429, { status: 'daily_cap', fusion: existing ? toDTO(existing) : null });
       }
       const r = forge.request(key, true);
       if (!r.job) {
@@ -201,6 +236,14 @@ export function createApp(cfg: AppConfig): App {
 
   const server = createServer((req, res) => {
     const url = new URL(req.url ?? '/', 'http://localhost');
+    if (url.pathname.startsWith('/api/')) {
+      cors(req, res);
+      if (req.method === 'OPTIONS') {
+        res.writeHead(204, { 'access-control-allow-methods': 'GET, POST', 'access-control-allow-headers': 'content-type', 'access-control-max-age': '86400' });
+        res.end();
+        return;
+      }
+    }
     const p = url.pathname.startsWith('/api/') ? api(req, res, url) : serveStatic(req, res, url.pathname);
     p.catch((e: Error) => {
       if (!res.headersSent) json(res, 500, { error: 'internal error' });

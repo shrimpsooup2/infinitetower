@@ -42,11 +42,17 @@ whole forge pipeline. A local Ollama works too: `OLLAMA_HOST=http://localhost:11
 | `npm start` / `npm run dev` | Run the server (dev restarts on changes under `src/`) |
 | `npm test` | Test suites: effect language, simulation, forge and API |
 | `npm run typecheck` | `tsc` over everything (install `typescript` and `@types/node` for this) |
+| `npm run build` | Static build of the game into `dist/` (for GitHub Pages; set `API_BASE`) |
 | `npm run bot -- all normal 2` | Headless playtest bot over the campaign, for tuning difficulty |
 | `npm run pregen -- 25` | Pre-forge 25 random fusions (or pass `v1:tower:a>b` keys) |
 
 `tools/screenshot.ts` drives the game in headless Chromium (needs `playwright`) and saves
 screenshots of every screen.
+
+## Putting it online
+
+The game can be published on **GitHub Pages**, with a small backend holding your Ollama key.
+The key never goes into the site. See **[docs/deploy.md](docs/deploy.md)** for the steps.
 
 ## Layout
 
@@ -69,3 +75,4 @@ tools/          playtest bot, pregen, screenshots
 | [docs/game-design.md](docs/game-design.md) | The game: loop, towers, cards and packs, enemies by dimension, campaign, economy, tutorial, art direction |
 | [docs/fusion-system.md](docs/fusion-system.md) | Fusions: ordered combos, the effect and VFX language, the forge pipeline, balance by simulation, lineage, storage and API |
 | [docs/architecture-and-roadmap.md](docs/architecture-and-roadmap.md) | The zero-dependency stack, module map, determinism, testing, deployment, what's next |
+| [docs/deploy.md](docs/deploy.md) | Going public: GitHub Pages for the game, a backend for the key, spend caps |

@@ -12,6 +12,7 @@
     "dev": "node --watch-path=src --env-file-if-exists=.env --disable-warning=ExperimentalWarning src/server/main.ts",
     "test": "node --disable-warning=ExperimentalWarning --test tests/*.test.ts",
     "typecheck": "tsc -p tsconfig.json",
+    "build": "node --disable-warning=ExperimentalWarning tools/build.ts",
     "bot": "node --disable-warning=ExperimentalWarning tools/bot.ts",
     "pregen": "node --env-file-if-exists=.env --disable-warning=ExperimentalWarning tools/pregen.ts"
   },

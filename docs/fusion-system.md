@@ -314,7 +314,7 @@ triples, and the tertiary really is a twist.
 | --- | --- | --- |
 | GET | `/api/health` | `{ ok, forge, model }` |
 | GET | `/api/stats` | Discovered count, total (656,000), forge status |
-| POST | `/api/forge` `{key}` | `200` with the fusion if it's ready. `202` `{status, position, token}` if it's queued or forging. `429` over the per-IP hourly limit for new generations. `400` for a bad key. |
+| POST | `/api/forge` `{key}` | `200` with the fusion if it's ready. `202` `{status, position, token}` if it's queued or forging. `429` with status `rate_limited` over the per-IP hourly limit for new generations, or `daily_cap` once today's global budget is used. `400` for a bad key. |
 | GET | `/api/forge?key=&token=` | Status or result. `worldFirst` is true only for the job's owner token. |
 
 Static files: `index.html` and `src/**` (TypeScript is served stripped of its types).
