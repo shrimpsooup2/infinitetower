@@ -15,6 +15,8 @@ const shot = async (name: string) => { await page.screenshot({ path: `${out}/${n
 const wait = (ms: number) => page.waitForTimeout(ms);
 
 await page.goto(url);
+await page.evaluate(() => { localStorage.clear(); localStorage.setItem('it.settings.v1', JSON.stringify({ tutorialDone: true })); });
+await page.reload();
 await wait(1200);
 await shot('01-title');
 await page.getByText('Play', { exact: true }).click();
