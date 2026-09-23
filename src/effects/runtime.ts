@@ -554,6 +554,11 @@ export function processScheduled(w: World): void {
   }
 }
 
+/** Potency also scales displacement (knockback, pull, teleport back). */
+function movePf(ctx: Ctx): number {
+  return Math.min(1.3, Math.sqrt(ctx.potency));
+}
+
 function spawnAllowed(w: World, ctx: Ctx): boolean {
   if (ctx.depth >= RULES.maxSpawnDepth) return false;
   const t = ctx.owner;
@@ -686,14 +691,14 @@ function exec(w: World, a: Action, ctx: Ctx): void {
     }
     case 'knockback':
       for (const e of select(w, a.to, ctx)) {
-        const d = clamp(evalValue(a.distance, ctx, e), 0, 3) * e.tenacity;
+        const d = clamp(evalValue(a.distance, ctx, e), 0, 3) * e.tenacity * movePf(ctx);
         moveAlongPath(w, e, -d);
       }
       break;
     case 'pull': {
       const [x, y] = resolvePoint(w, a.toward, ctx);
       for (const e of select(w, a.to, ctx)) {
-        const s = clamp(evalValue(a.strength, ctx, e), 0, 3) * e.tenacity;
+        const s = clamp(evalValue(a.strength, ctx, e), 0, 3) * e.tenacity * movePf(ctx);
         const pd = pathOf(w, e).project(x, y);
         moveAlongPath(w, e, clamp(pd - e.dist, -s, s));
       }
@@ -701,7 +706,8 @@ function exec(w: World, a: Action, ctx: Ctx): void {
     }
     case 'teleport_along_path':
       for (const e of select(w, a.to, ctx)) {
-        const d = clamp(evalValue(a.distance, ctx, e), -6, 6) * (e.traitSet.has('boss') ? e.tenacity : 1);
+        const raw = clamp(evalValue(a.distance, ctx, e), -6, 6);
+        const d = raw * (e.traitSet.has('boss') ? e.tenacity : 1) * (raw < 0 ? movePf(ctx) : 1);
         const x0 = e.x, y0 = e.y;
         moveAlongPath(w, e, d);
         if (w.fxOn) w.fx.push({ k: 'blink', x1: x0, y1: y0, x2: e.x, y2: e.y });

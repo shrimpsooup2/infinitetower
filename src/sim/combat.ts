@@ -195,8 +195,11 @@ export function refreshDerived(w: World, e: Enemy): void {
   for (const s of e.statuses) {
     const d = s.def;
     const k = d.stacking === 'add' ? s.stacks : 1;
-    if (d.speedMult !== 1) speed *= Math.pow(d.speedMult, k);
-    if (d.dmgTakenMult !== 1) dmg *= 1 + (d.dmgTakenMult - 1) * k;
+    // Potency (from the balance solver) scales how strong slows and amps are.
+    const pf = Math.min(1.3, Math.sqrt(s.potency));
+    if (d.speedMult < 1) speed *= Math.pow(1 - (1 - d.speedMult) * pf, k);
+    else if (d.speedMult > 1) speed *= Math.pow(d.speedMult, k);
+    if (d.dmgTakenMult !== 1) dmg *= 1 + (d.dmgTakenMult - 1) * pf * k;
     armor += d.armorDelta * k;
     if (d.hardCC) hard = true;
     if (d.reverse) rev = true;

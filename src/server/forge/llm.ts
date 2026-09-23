@@ -1,0 +1,146 @@
+// LLM providers. Default: Ollama's /api/chat, which works both for Ollama's
+// cloud (https://ollama.com with an API key) and a local Ollama server.
+
+import type { ChatMessage } from './prompt.ts';
+import { specJsonSchema } from '../../effects/dsl.ts';
+import { offlineFusion } from '../../effects/combiner.ts';
+import { POWER_BY_ID } from '../../content/powers.ts';
+import { TOWER_BY_ID } from '../../content/towers.ts';
+import { parseKey } from '../../effects/keys.ts';
+
+export interface ChatOptions {
+  temperature: number;
+  /** For the mock provider / logging. */
+  key?: string;
+}
+
+export interface LLM {
+  readonly name: string;
+  chat(messages: ChatMessage[], o: ChatOptions): Promise<string>;
+}
+
+export interface OllamaConfig {
+  host: string;
+  apiKey: string | null;
+  model: string;
+  /** "schema" = full JSON Schema structured output, "json" = JSON mode, "none" = prompt only. */
+  format: 'schema' | 'json' | 'none';
+  think: string | null;
+  timeoutMs: number;
+}
+
+export class OllamaLLM implements LLM {
+  readonly name: string;
+  private cfg: OllamaConfig;
+  private formatFallback: OllamaConfig['format'] | null = null;
+
+  constructor(cfg: OllamaConfig) {
+    this.cfg = cfg;
+    this.name = cfg.model;
+  }
+
+  async chat(messages: ChatMessage[], o: ChatOptions): Promise<string> {
+    const format = this.formatFallback ?? this.cfg.format;
+    const body: Record<string, unknown> = {
+      model: this.cfg.model,
+      messages,
+      stream: false,
+      options: { temperature: o.temperature, num_ctx: 32768 },
+      keep_alive: '30m',
+    };
+    if (format === 'schema') body.format = specJsonSchema();
+    else if (format === 'json') body.format = 'json';
+    if (this.cfg.think) body.think = this.cfg.think === 'true' ? true : this.cfg.think === 'false' ? false : this.cfg.think;
+    const headers: Record<string, string> = { 'content-type': 'application/json' };
+    if (this.cfg.apiKey) headers.authorization = `Bearer ${this.cfg.apiKey}`;
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), this.cfg.timeoutMs);
+    try {
+      const res = await fetch(`${this.cfg.host.replace(/\/$/, '')}/api/chat`, {
+        method: 'POST', headers, body: JSON.stringify(body), signal: ctl.signal,
+      });
+      const text = await res.text();
+      if (!res.ok) {
+        // Some models / endpoints reject complex schemas: step down once.
+        if (res.status === 400 && format !== 'none' && /format|schema|grammar/i.test(text)) {
+          this.formatFallback = format === 'schema' ? 'json' : 'none';
+          return this.chat(messages, o);
+        }
+        throw new Error(`Ollama ${res.status}: ${text.slice(0, 300)}`);
+      }
+      const data = JSON.parse(text) as { message?: { content?: string; thinking?: string } };
+      const content = data.message?.content ?? '';
+      if (!content.trim() && data.message?.thinking) return data.message.thinking;
+      return content;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+}
+
+/**
+ * Deterministic stand-in for tests and local development without an API key
+ * (LLM_PROVIDER=mock). It returns the offline combination with a new name and
+ * a custom vfx, so the whole pipeline (validation, lint, balance, storage)
+ * can be exercised end to end.
+ */
+export class MockLLM implements LLM {
+  readonly name = 'mock';
+  calls = 0;
+  async chat(messages: ChatMessage[], o: ChatOptions): Promise<string> {
+    this.calls++;
+    const parsed = o.key ? parseKey(o.key) : null;
+    if (!parsed) return '{"concept": "broken"}';
+    const tower = TOWER_BY_ID.get(parsed.tower)!;
+    const powers = parsed.powers.map((p) => POWER_BY_ID.get(p)!);
+    const spec = offlineFusion(tower, powers, o.key!);
+    const isRepair = messages.length > 2;
+    spec.name = `Mock ${powers.map((p) => p.noun).join(' ')} ${this.calls}`.slice(0, 32);
+    spec.concept = `Mock fusion for ${o.key}.`;
+    spec.vfx = [...(spec.vfx ?? []), {
+      id: 'mock_burst',
+      layers: [{ kind: 'particles', count: 12, shape: 'star', direction: 'radial', speed: [2, 4], life: [0.3, 0.6], color: 'secondary', glow: true }],
+    }];
+    spec.visual = { ...(spec.visual ?? {}), kill: 'mock_burst', impact: spec.visual?.impact ?? 'pop', aura: spec.visual?.aura ?? 'halo' };
+    await new Promise((r) => setTimeout(r, isRepair ? 5 : 20));
+    return '```json\n' + JSON.stringify(spec) + '\n```';
+  }
+}
+
+/** Pull the first complete JSON object out of a model reply (fences, prose, trailing commas...). */
+export function extractJson(text: string): unknown {
+  let s = text.trim().replace(/^```(?:json)?/i, '').replace(/```\s*$/, '');
+  const start = s.indexOf('{');
+  if (start < 0) throw new Error('no JSON object found');
+  let depth = 0;
+  let inStr = false;
+  let esc = false;
+  let end = -1;
+  for (let i = start; i < s.length; i++) {
+    const c = s[i];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (c === '\\') esc = true;
+      else if (c === '"') inStr = false;
+      continue;
+    }
+    if (c === '"') inStr = true;
+    else if (c === '{') depth++;
+    else if (c === '}') {
+      depth--;
+      if (depth === 0) {
+        end = i;
+        break;
+      }
+    }
+  }
+  if (end < 0) throw new Error('JSON object is not closed (output truncated?)');
+  s = s.slice(start, end + 1);
+  try {
+    return JSON.parse(s);
+  } catch {
+    // Common slips: trailing commas and // comments.
+    const cleaned = s.replace(/\/\/[^\n"]*$/gm, '').replace(/,\s*([}\]])/g, '$1');
+    return JSON.parse(cleaned);
+  }
+}

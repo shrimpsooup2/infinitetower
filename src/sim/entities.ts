@@ -101,9 +101,15 @@ export function makeProjectile(w: World, o: ProjInit): Projectile | null {
     }
     case 'sky_drop': {
       let tx = o.x, ty = o.y;
+      const fromTower = !!host && dist2(o.x, o.y, host.x, host.y) < 0.01;
       if (o.target) {
         tx = o.target.x;
         ty = o.target.y;
+      } else if (!fromTower) {
+        // Scatter around the origin point (e.g. raining around an impact).
+        const r = 0.3 + w.rng.next() * 1.1;
+        tx = o.x + Math.cos(o.ang) * r;
+        ty = o.y + Math.sin(o.ang) * r;
       } else if (host) {
         const pool = w.hash.query(host.x, host.y, host.stats.range, 0.5).filter((e) => canHit(w, e, o.hitsAir, true));
         if (pool.length) {
@@ -195,7 +201,7 @@ function projHit(w: World, p: Projectile, e: Enemy, mult = 1): void {
   dealDamage(w, e, p.damage * mult, p.dtype, { tower: t, isHit: true, depth: p.depth });
   if (p.applyStatus && t) {
     const def = BUILTIN_STATUS_DEFS[p.applyStatus];
-    if (def) applyStatus(w, e, def, 1, undefined, t.rt ? makeCtx(w, t.rt, t, { depth: p.depth }, null, 'chassis') : chassisCtx(w, t));
+    if (def) applyStatus(w, e, def, 1, undefined, chassisCtx(w, t));
   }
   if (w.fxOn && p.look.impact) {
     w.fx.push({ k: 'hit', x: e.x, y: e.y, vfx: p.look.impact, colors: p.rt?.colors ?? w.defaultColors, dcolor: DAMAGE_COLORS[p.dtype], size: 1 });
@@ -497,8 +503,9 @@ export function updateZones(w: World, dt: number): void {
       if (!e.alive || e.burrowed && z.tpl.shape !== 'path_segment') continue;
       if (!inZone(w, z, e)) continue;
       now.add(e.id);
-      if (z.tpl.speedMult !== 1) e.zoneSpeed = Math.min(e.zoneSpeed, z.tpl.speedMult);
-      if (z.tpl.dmgTakenMult !== 1) e.zoneDmg *= z.tpl.dmgTakenMult;
+      const pf = Math.min(1.3, Math.sqrt(z.potency));
+      if (z.tpl.speedMult < 1) e.zoneSpeed = Math.min(e.zoneSpeed, 1 - (1 - z.tpl.speedMult) * pf);
+      if (z.tpl.dmgTakenMult !== 1) e.zoneDmg *= 1 + (z.tpl.dmgTakenMult - 1) * pf;
       if (!z.inside.has(e.id) && z.tpl.onEnter) runActions(w, z.tpl.onEnter, zoneCtx(w, z, e));
     }
     if (z.tpl.onExit) {

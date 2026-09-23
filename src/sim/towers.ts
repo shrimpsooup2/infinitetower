@@ -149,7 +149,7 @@ export function chassisHit(w: World, t: Tower, e: Enemy, dmg: number, depth: num
   dealDamage(w, e, dmg, t.def.dtype, { tower: t, isHit: true, depth });
   if (t.def.onHitStatus) {
     const def = BUILTIN_STATUS_DEFS[t.def.onHitStatus];
-    applyStatus(w, e, def, 1, undefined, t.rt ? makeCtx(w, t.rt, t, { depth }, null, 'chassis') : chassisCtx(w, t));
+    applyStatus(w, e, def, 1, undefined, chassisCtx(w, t));
   }
   if (w.fxOn) {
     const vfx = resolveVfx(t.rt, t.rt?.spec.visual?.impact);

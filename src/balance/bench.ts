@@ -141,7 +141,7 @@ export function solvePotency(towerId: string, spec: FusionSpec, sockets: string[
   if (!TOWER_BY_ID.has(towerId)) throw new Error(`unknown tower ${towerId}`);
   const target = TARGETS[Math.min(3, Math.max(1, sockets.length))];
   const tier = target.tier;
-  let lo = 0.2, hi = 2;
+  let lo = 0.1, hi = 2;
   let evals = 0;
   const at = (p: number) => {
     evals++;

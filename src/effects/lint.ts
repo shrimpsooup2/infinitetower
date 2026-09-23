@@ -96,7 +96,8 @@ function specTags(spec: FusionSpec): Set<string> {
   add('ring', /explode|ring|nova/);
   add('sky', /sky_drop/);
   add('speed', /rate_mult|"rate"/);
-  add('repeat', /repeat_attack|"repeat"/);
+  add('repeat', /repeat_attack|"repeat"|"delay"/);
+  add('delay', /"delay"|repeat_attack/);
   add('nth', /every_nth/);
   add('ramp', /add_var/);
   add('charge', /on_idle|var_at_least/);

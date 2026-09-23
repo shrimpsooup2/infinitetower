@@ -184,7 +184,28 @@ class ArrS<T> extends Schema<T[]> {
     return { type: 'array', items: this.item.json(defs), minItems: this.min, maxItems: this.max };
   }
   sketch(): string {
+    if (this.min === 2 && this.max === 2) return `[a, b] (${this.item.sketch()})`;
     return `[${this.item.sketch()}]`;
+  }
+}
+
+/** Same schema, but shown under a short name in the cheat sheet. */
+class AliasS<T> extends Schema<T> {
+  readonly inner: Schema<T>;
+  readonly alias: string;
+  constructor(alias: string, inner: Schema<T>) {
+    super();
+    this.alias = alias;
+    this.inner = inner;
+  }
+  parse(v: unknown, path: string, issues: Issue[]): T | undefined {
+    return this.inner.parse(v, path, issues);
+  }
+  json(defs: JsonDefs): Record<string, unknown> {
+    return this.inner.json(defs);
+  }
+  sketch(): string {
+    return this.alias;
   }
 }
 
@@ -198,6 +219,10 @@ class OptS<T> extends Schema<T | undefined> {
   parse(v: unknown, path: string, issues: Issue[]): T | undefined {
     if (v === undefined || v === null) return undefined;
     return this.inner.parse(v, path, issues);
+  }
+  override describe(doc: string): this {
+    this.doc = doc;
+    return this;
   }
   json(defs: JsonDefs): Record<string, unknown> {
     return this.inner.json(defs);
@@ -365,6 +390,7 @@ export const S = {
     new DiscS<T>(name, key, variants),
   any: <T = unknown>(name: string, alts: Schema<unknown>[]) => new AnyS<T>(name, alts),
   lazy: <T>(name: string, get: () => Schema<T>) => new LazyS<T>(name, get),
+  alias: <T>(name: string, inner: Schema<T>) => new AliasS<T>(name, inner),
 };
 
 export function toJsonSchema(root: Schema<unknown>): Record<string, unknown> {

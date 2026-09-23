@@ -171,9 +171,9 @@ export const VisualS = S.obj({
   muzzle: S.opt(S.id()),
   impact: S.opt(S.id()),
   kill: S.opt(S.id()),
-  projectile: S.opt(ProjectileLookS),
-  beam: S.opt(S.obj(beamFields)),
-  spray: S.opt(S.obj(particleFields)),
+  projectile: S.opt(S.alias('ProjectileLook', ProjectileLookS)),
+  beam: S.opt(S.alias('BeamLook (the fields of a beam layer)', S.obj(beamFields))),
+  spray: S.opt(S.alias('SprayLook (the fields of a particles layer)', S.obj(particleFields))),
 });
 
 // ---------------------------------------------------------------- triggers
@@ -385,8 +385,8 @@ export const ProjectileTplS = S.obj({
   hits_air: S.opt(S.bool()),
   on_hit: OptActions(),
   on_end: OptActions(),
-  look: S.opt(ProjectileLookS),
-  beam: S.opt(S.obj(beamFields)),
+  look: S.opt(S.alias('ProjectileLook', ProjectileLookS)),
+  beam: S.opt(S.alias('BeamLook', S.obj(beamFields))),
   impact: S.opt(S.id()),
 });
 
@@ -503,7 +503,8 @@ export function cheatSheet(builtinVfx: string[]): string {
     'CUSTOM PROJECTILE = ' + ProjectileTplS.sketch(),
     '  motions: straight, homing, lob (arcs to the aim point and splashes), boomerang (flies out and returns), orbit (circles the tower), spiral, sine, sky_drop (falls from the sky onto the aim point after 0.5 s), path_crawl (rolls along the path toward the spawn, hitting everything), mine (sits on the path until an enemy steps on it), hitscan (instant line). "bullet" is a built-in homing projectile (50% damage).',
     'CUSTOM ZONE = ' + ZoneTplS.sketch(),
-    '  path_segment covers the path within radius (along the path) of the point. Inside zone actions, "target" = each enemy inside.',
+    '  path_segment covers the path within radius (along the path) of the point. Inside zone actions, "target" = each enemy inside and "point" = the zone centre.',
+    'Inside a projectile\'s on_hit, "target" = the enemy hit; in on_end there is no target and "point" = where it ended.',
     'VARS = [{ id, max?, reset?: never|wave_start|idle }] per-tower counters starting at 0.',
     'STATS = ' + StatBlockS.sketch() + '  (passive modifiers of the tower itself)',
     'ATTACK = { motion?: ' + ATTACK_MOTIONS.join('|') + ' } changes how the basic projectile flies (projectile towers only).',
@@ -523,6 +524,7 @@ export function cheatSheet(builtinVfx: string[]): string {
       '\n    an animated outline/fill growing from radius[0] to radius[1] over duration (rings, shockwaves, sigils, flashes, spinning stars). count = staggered copies.',
     '- orbiters ' + (VfxLayerS as DiscS<unknown>).variants.get('orbiters')!.sketch() + '  (small shapes circling the anchor)',
     '- text { text, color?, size?, duration? }   - shake { strength 0..1, duration? } (screen shake, keep it rare)',
+    'PROJECTILELOOK = ' + ProjectileLookS.sketch() + '  (emitter = a vfx id emitted continuously along the flight)',
     'HOOKS: top-level "visual" = ' + VisualS.sketch(),
     '  body = decoration drawn on the tower; aura = vfx looping around the tower; muzzle = vfx on each attack at the barrel (aimed); impact = vfx on each hit; kill = vfx when it kills;',
     '  projectile = look of the basic projectile (projectile/lob towers); beam = look of the basic beam/line/lightning (Prism, Rail, Arc); spray = particle look of the basic spray (Flame).',
