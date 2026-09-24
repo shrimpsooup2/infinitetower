@@ -4,23 +4,17 @@ import { Game } from './game.ts';
 import { Audio } from './audio.ts';
 import { ForgeClient } from './forge.ts';
 import { Codex, loadSettings, saveSettings, loadProgress, loadRun, clearRun, type Settings } from './storage.ts';
-import { h, mount, clear, tone, fmtDate } from './ui/dom.ts';
+import { h, mount, clear, tone } from './ui/dom.ts';
 import { MAPS, MAP_BY_ID, ACTS, TUTORIAL_MAP } from '../content/maps.ts';
 import { DIFFICULTIES } from '../content/rules.ts';
-import { TOWER_BY_ID, TOWERS } from '../content/towers.ts';
-import { POWER_BY_ID } from '../content/powers.ts';
 import { ENEMIES } from '../content/enemies.ts';
 import { TOTAL_FUSIONS } from '../effects/keys.ts';
-import { describeSpec } from '../effects/describe.ts';
-import { conceptEl } from './ui/concept.ts';
-import { stripTokens } from '../effects/concept.ts';
 import { PAL } from '../content/colors.ts';
 import { drawEnemyBody } from './render/enemy-art.ts';
-import { towerIcon } from './render/tower-art.ts';
-import { colorsFor } from '../sim/world.ts';
 import { drawScenery, themeOf } from './render/scenery.ts';
 import { CampaignMap, ROMAN, DIFF_COLOR } from './campaign.ts';
 import { dexScreen } from './dex.ts';
+import { codexScreen } from './codex-screen.ts';
 import type { DifficultyDef, MapDef } from '../sim/types.ts';
 
 /**
@@ -277,52 +271,16 @@ class App {
   }
 
   codexScreen(): void {
-    let filterTower = '';
-    let q = '';
     const count = h('div', { class: 'stat-line' }, `${this.codex.size} fusions made by you`);
     void this.forge.globalStats().then((s) => {
       if (s && typeof s.discovered === 'number') count.textContent = `${this.codex.size} fusions made by you · ${s.discovered.toLocaleString()} of ${TOTAL_FUSIONS.toLocaleString()} discovered worldwide`;
     });
-    const grid = h('div', { class: 'codex' });
-    const renderGrid = () => {
-      const list = this.codex.all().filter((e) => (!filterTower || e.tower === filterTower) &&
-        (!q || `${e.name} ${e.powers.join(' ')} ${stripTokens(e.concept)}`.toLowerCase().includes(q)));
-      if (!list.length) {
-        mount(grid, h('div', { class: 'stat-line' }, this.codex.size ? 'No fusions match.' : 'No fusions yet.'));
-        return;
-      }
-      mount(grid, ...list.slice(0, 200).map((e) => {
-        const tdef = TOWER_BY_ID.get(e.tower);
-        return h('div', { class: 'centry' },
-          h('div', { class: 'head' },
-            tdef ? towerIcon(tdef.id, e.powers.length, 40, colorsFor(e.powers), e.powers.length) : null,
-            h('div', { class: 'col grow', style: { gap: '2px' } },
-              h('div', { class: 'fusion-name', style: { color: POWER_BY_ID.get(e.powers[0])?.color } }, e.name),
-              h('div', { class: 'chips' }, h('span', { class: 'chip', style: tone('#8eb2ff') }, tdef?.name ?? e.tower),
-                ...e.powers.flatMap((p, i) => [i ? h('span', { class: 'arrow' }, '>') : h('span', { class: 'arrow' }, ':'), h('span', { class: 'chip', style: tone(POWER_BY_ID.get(p)?.color ?? '#999') }, POWER_BY_ID.get(p)?.name ?? p)])),
-            ),
-          ),
-          h('div', { class: 'row' },
-            e.status === 'ready' ? h('span', { class: 'badge gold' }, e.discoveryNo ? `Fusion #${e.discoveryNo.toLocaleString()}` : 'Fusion') : h('span', { class: 'badge grey' }, e.status === 'offline' ? 'Offline fusion' : 'Provisional'),
-            e.worldFirst ? h('span', { class: 'badge red' }, 'WORLD FIRST') : null,
-            e.discoveredAt ? h('span', { class: 'badge' }, fmtDate(e.discoveredAt)) : null,
-          ),
-          conceptEl(e.spec, { potency: e.potency, dmgBase: TOWER_BY_ID.get(e.tower)?.damage[0] }, e.concept),
-          e.flavor ? h('div', { class: 'flavor' }, e.flavor) : null,
-          e.spec ? h('details', { class: 'rules-box' }, h('summary', null, 'Details'),
-            h('ul', { class: 'rules' }, ...describeSpec(e.spec, { potency: e.potency }).map((l) => h('li', null, l)))) : null,
-        );
-      }));
-    };
-    const select = h('select', { class: 'search', on: { change: (ev: Event) => { filterTower = (ev.target as HTMLSelectElement).value; renderGrid(); } } },
-      h('option', { attrs: { value: '' } }, 'All towers'), ...TOWERS.map((t) => h('option', { attrs: { value: t.id } }, t.name)));
-    const search = h('input', { class: 'search', attrs: { placeholder: 'Search fusions...' }, on: { input: (ev: Event) => { q = (ev.target as HTMLInputElement).value.toLowerCase(); renderGrid(); } } });
+    const view = codexScreen(this.codex);
     this.screen(
-      h('div', { class: 'topbar' }, h('button', { class: 'btn grey', on: { click: () => this.title() } }, 'Back'), h('h1', null, 'Codex'), select, search),
+      h('div', { class: 'topbar' }, h('button', { class: 'btn grey', on: { click: () => this.title() } }, 'Back'), h('h1', null, 'Codex'), view.search),
       count,
-      grid,
+      view.body,
     );
-    renderGrid();
   }
 
   settingsScreen(): void {

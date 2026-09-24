@@ -794,12 +794,23 @@ export class Game {
     const info: (HTMLElement | null)[] = [];
     if (!rt) {
       info.push(h('div', { class: 'info-card' }, t.def.blurb));
+    } else if (t.sockets.length === 1) {
+      // One power: the tower's own description, then what its power adds, spelled out.
+      const p = POWER_BY_ID.get(t.sockets[0])!;
+      const lines = describeSpec(rt.spec, { potency: rt.potency, dmgBase: t.stats.damage });
+      info.push(
+        h('div', { class: 'info-card' }, t.def.blurb),
+        h('div', { class: 'powerhead' },
+          h('span', { class: 'fusion-name', style: { color: p.color } }, `+ ${p.name}`),
+          h('span', { class: 'badge' }, 'Base power')),
+        conceptEl(t.specSrc?.spec ?? rt.spec, { level: t.level, potency: rt.potency, dmgBase: t.stats.damage }),
+        h('ul', { class: 'rules' }, ...lines.map((l) => h('li', null, l))),
+      );
     } else {
       const lines = describeSpec(rt.spec, { potency: rt.potency, dmgBase: t.stats.damage });
-      const title = t.sockets.length === 1 ? POWER_BY_ID.get(t.sockets[0])!.name : rt.spec.name;
       info.push(
-        h('div', { class: 'fusion-name', style: { color: rt.colors.base } }, title),
-        this.statusBadge(t) ?? h('span', { class: 'badge' }, 'Single power'),
+        h('div', { class: 'fusion-name', style: { color: rt.colors.base } }, rt.spec.name),
+        this.statusBadge(t),
         conceptEl(t.specSrc?.spec ?? rt.spec, { level: t.level, potency: rt.potency, dmgBase: t.stats.damage }),
         rt.spec.flavor ? h('div', { class: 'flavor' }, rt.spec.flavor) : null,
         this.rulesDetails(lines),

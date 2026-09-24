@@ -293,9 +293,33 @@ canvas#game { position: fixed; inset: 0; display: block; }
   box-shadow: 0 3px 0 rgba(0, 0, 0, 0.25); flex-shrink: 0;
 }
 .topbar h1 { margin: 0; flex: 1; font-size: 30px; text-shadow: var(--outline); }
-.codex { width: min(1000px, 96vw); display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px; }
-.centry { background: var(--panel-strong); border-radius: 10px; padding: 10px; display: flex; flex-direction: column; gap: 5px; }
-.centry .head { display: flex; gap: 8px; align-items: center; }
+/* Codex: tower tabs, base-power tabs, compact rows that open in place */
+.codex2 { width: min(1000px, 96vw); display: flex; flex-direction: column; gap: 10px; }
+.ctabs { display: flex; flex-wrap: wrap; gap: 6px; }
+.ctab {
+  display: flex; align-items: center; gap: 6px; padding: 3px 10px 3px 4px; border-radius: 10px; cursor: pointer;
+  background: var(--panel-strong); border: 3px solid transparent; font-size: 13px; text-shadow: var(--outline);
+}
+.ctab.sel { border-color: #fff; }
+.ctab.empty { opacity: 0.5; }
+.ctab .n { font-size: 11px; opacity: 0.8; }
+.cpage { background: var(--panel); border-radius: 12px; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+.chead { font-size: 15px; text-shadow: var(--outline); }
+.bases { display: flex; flex-wrap: wrap; gap: 4px; }
+.bases .chip { cursor: pointer; font-size: 12px; }
+.bases .chip.sel { outline: 2px solid #fff; outline-offset: 1px; }
+.crows { display: flex; flex-direction: column; gap: 4px; }
+.crow { background: var(--panel-strong); border-radius: 8px; }
+.crow.child { margin-left: 26px; }
+.crow .line { display: flex; align-items: center; gap: 8px; padding: 3px 8px; cursor: pointer; min-height: 36px; }
+.crow .line:hover { background: rgba(255, 255, 255, 0.06); border-radius: 8px; }
+.crow .nm { flex: 1; min-width: 0; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-shadow: var(--outline); }
+.crow .chain { display: flex; gap: 3px; align-items: center; }
+.crow .caret { opacity: 0.7; text-shadow: var(--outline); }
+.crow .more { padding: 2px 12px 10px 46px; display: flex; flex-direction: column; gap: 6px; }
+.pchip { font-size: 10px; padding: 1px 5px; border-radius: 5px; background: var(--c); border: 2px solid rgba(0, 0, 0, 0.3); text-shadow: var(--outline); }
+.pager { display: flex; gap: 4px; justify-content: center; flex-wrap: wrap; }
+.pager .btn { padding: 3px 10px; }
 .chips { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; }
 .chip { font-size: 11px; padding: 2px 6px; border-radius: 5px; background: var(--c); border: 2px solid rgba(0,0,0,0.3); text-shadow: var(--outline); }
 .arrow { opacity: 0.8; font-size: 12px; }
@@ -480,3 +504,4 @@ canvas#game { position: fixed; inset: 0; display: block; }
 .dex-card .nm { font-size: 11px; text-align: center; line-height: 1.15; text-shadow: var(--outline); }
 .dex-card.unseen canvas { filter: brightness(0) opacity(0.45); }
 .dex-card.unseen .nm { opacity: 0.6; }
+.powerhead { display: flex; align-items: center; gap: 8px; margin-top: 4px; }

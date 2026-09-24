@@ -189,6 +189,9 @@ price is built: slot price × rarity × level × wave.
   Until one arrives, the tower plays an offline combination of its powers, so it is never
   idle.
 
+**A single power.** With one card socketed, the panel shows the tower's description with the
+power's effects listed beneath it, spelled out.
+
 **Reading a fusion.** The panel shows the fusion's short explanation, written by the Forge,
 with its key numbers live: each is shown at the tower's real level, damage and balance.
 Numbers in green grow with level (hover for the step), damage is shown in gold (it grows 10%
@@ -196,8 +199,15 @@ per level), and plain numbers are fixed. The Details list gives every rule, with
 number labelled by its step, such as "3.1 s (+0.2 s/lvl)".
 
 **No previews.** Hovering a card over a tower shows "???" for any fusion you haven't made
-yourself. Fusions you've made are stored in your browser, and those you can preview. The
-Codex screen lists them with their number, date, World First badge and rules text.
+yourself. Fusions you've made are stored in your browser, and those you can preview.
+
+**The Codex** keeps them compact:
+- a page for each tower, as tabs with counts;
+- tabs for each base power on that tower;
+- a list of one-line rows (name, power chain, discovery number, World First star). Each triple
+  is nested under the pair it evolved from.
+- A row opens in place to show the concept, dates and rules.
+- Long lists are paged, and the search box jumps to the tower with matches.
 
 ---
 

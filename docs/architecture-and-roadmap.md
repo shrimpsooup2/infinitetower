@@ -40,7 +40,7 @@ src/
                   SQLite), firestore (Firestore store),
                   forge/ (prompt, examples, llm, pipeline, balancer, balance-worker), main
   client/         main (title, campaign, codex, settings), campaign (the world map), dex (the
-                  Shape Dex), game
+                  Shape Dex), codex-screen (the fusion Codex), game
                   (loop, input, HUD, packs, hand, side panel), tutorial, forge client, storage,
                   audio,
                   render/ (renderer, fx, draw, scenery, tower-art, enemy-art, geometry, pack-art),
