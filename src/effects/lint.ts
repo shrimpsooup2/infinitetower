@@ -162,6 +162,25 @@ export function lintFusion(spec: FusionSpec, powers: PowerDef[], parent: FusionS
     problems.push(`This is nearly identical to plain ${base.name}. Transform it with the secondary power into something new.`);
   }
 
+  // Words: a short plain concept and a name that says what the fusion does.
+  const words = (x: string) => x.trim().split(/[\s-]+/).filter(Boolean);
+  const nameWords = words(spec.name);
+  if (nameWords.length > 3) problems.push(`The name "${spec.name}" is too long: use 1 or 2 plain words that say what the fusion does (3 at most).`);
+  const forms = new Set(powers.flatMap((p) => [p.id, p.name, p.adj, p.noun]).map((w) => w.toLowerCase()));
+  if (nameWords.length && nameWords.every((w) => forms.has(w.toLowerCase().replace(/[^a-z]/g, '')))) {
+    problems.push(`The name "${spec.name}" just combines the power names. Name it after what it does, in 1 or 2 plain words (like "Ice Bells" or "Poison Well").`);
+  }
+  const conceptWords = words(spec.concept).length;
+  if (conceptWords > 18) problems.push(`The concept is too long (${conceptWords} words). Say what happens in one plain sentence of at most 12 words.`);
+  if (words(spec.flavor).length > 10) problems.push('The flavor is too long: at most 6 words.');
+
+  // Pairs stay simple: one cause and effect, not a machine.
+  if (!parent && powers.length === 2) {
+    if (spec.rules.length > 4) problems.push(`Too complicated for a pair (${spec.rules.length} rules). Use 2 or 3 rules built around one cause and effect.`);
+    const templates = (spec.statuses?.length ?? 0) + (spec.projectiles?.length ?? 0) + (spec.zones?.length ?? 0);
+    if (templates > 2) problems.push(`Too many custom statuses/projectiles/zones for a pair (${templates}). Use at most one.`);
+  }
+
   // Visual identity.
   const v = spec.visual ?? {};
   let visualHooks = 0;

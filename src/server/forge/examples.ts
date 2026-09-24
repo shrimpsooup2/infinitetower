@@ -1,7 +1,8 @@
 // Hand-written example fusions shown to the LLM. They are the single biggest
-// lever on output quality, so each one demonstrates: a clear concept, the
-// base power leading, the secondary reshaping it, a custom noun, a payoff
-// moment, and visuals that look like the concept. Two examples that do not
+// lever on output quality, so each one demonstrates what we want from a pair:
+// one concrete cause and effect in 2 or 3 rules, the base power leading, the
+// secondary reshaping it, a short plain concept, a 1-2 word name that says
+// what it does, and visuals that look like the idea. Two examples that do not
 // share powers or tower with the request are rotated into each prompt.
 // Every example is validated and linted by the test suite.
 
@@ -19,16 +20,11 @@ export const PAIR_EXAMPLES: PairExample[] = [
     powers: ['frost', 'echo'],
     spec: {
       dsl: 1,
-      concept: 'Frozen enemies become bells. Striking one makes every other bell in range ring with a delayed echo of the hit; shattering one tolls all the others twice. Each bell made this wave makes the final peal louder.',
-      name: 'Glacial Carillon',
-      flavor: 'Every frozen heart is a bell waiting to be struck.',
-      vars: [{ id: 'toll', max: 12, reset: 'wave_start' }],
+      concept: 'Frozen enemies turn into bells; breaking one rings all the others twice.',
+      name: 'Ice Bells',
+      flavor: 'Hear that? Ice.',
       statuses: [{
-        id: 'bellfrost', name: 'Bellfrost', duration: 2.5, speed_mult: 0.35,
-        on_expire: [
-          { action: 'damage', to: 'target', amount: { mul: [{ dmg: 0.15 }, { var: 'toll' }] }, type: 'frost' },
-          { action: 'vfx', effect: 'bell_toll', at: 'target', size: 0.8 },
-        ],
+        id: 'bellfrost', name: 'Ice Bell', duration: 2.5, speed_mult: 0.35,
         tint: 'base', icon: 'bell', overlay: 'shell', scale: 1.1, vfx: 'rime_glint',
       }],
       vfx: [
@@ -47,15 +43,6 @@ export const PAIR_EXAMPLES: PairExample[] = [
           do: [
             { action: 'apply_status', to: 'target', status: 'bellfrost' },
             { action: 'remove_status', to: 'target', status: 'chill' },
-            { action: 'add_var', var: 'toll', amount: 1 },
-          ],
-        },
-        {
-          when: { event: 'on_hit' }, if: [{ check: 'target_has_status', status: 'bellfrost' }, { check: 'cooldown', seconds: 0.5 }],
-          do: [
-            { action: 'damage', to: { select: 'with_status', status: 'bellfrost' }, amount: { dmg: 0.4 }, type: 'frost', delay: 0.3 },
-            { action: 'vfx', effect: 'bell_toll', at: 'target', delay: 0.3 },
-            { action: 'sound', preset: 'chime', pitch: 1.3, delay: 0.3 },
           ],
         },
         {
@@ -63,6 +50,7 @@ export const PAIR_EXAMPLES: PairExample[] = [
           do: [
             { action: 'damage', to: { select: 'with_status', status: 'bellfrost' }, amount: { dmg: 0.5 }, type: 'frost', repeat: { times: 2, every: 0.4 } },
             { action: 'vfx', effect: 'bell_toll', at: 'point', size: 1.4 },
+            { action: 'sound', preset: 'chime', pitch: 1.3 },
           ],
         },
       ],
@@ -78,9 +66,9 @@ export const PAIR_EXAMPLES: PairExample[] = [
     powers: ['venom', 'gravity'],
     spec: {
       dsl: 1,
-      concept: 'The flamethrower becomes a mist sprayer of green toxin. Enemies soaked in enough poison collapse into a swirling miasma well that drags the crowd in and keeps poisoning everything inside.',
-      name: 'Miasma Maelstrom',
-      flavor: 'Breathe in. Now come closer.',
+      concept: 'Sprays poison mist; soaked enemies become a well that pulls others in.',
+      name: 'Poison Well',
+      flavor: 'Breathe in. Come closer.',
       zones: [{
         id: 'well', shape: 'circle', radius: 1.1, duration: 2.5, speed_mult: 0.8,
         tick: { every: 0.5, do: [
@@ -130,9 +118,9 @@ export const PAIR_EXAMPLES: PairExample[] = [
     powers: ['radiance', 'executioner'],
     spec: {
       dsl: 1,
-      concept: 'Each rail shot is a sunbeam that brands everything it passes through. Branded enemies that fall low are judged: a pillar of light executes them and brands their neighbours.',
-      name: 'Solar Verdict',
-      flavor: 'The sun does not miss, and it does not forgive.',
+      concept: 'Shots brand enemies; branded ones under 25% HP are struck down by light.',
+      name: 'Judgment Beam',
+      flavor: 'The sun does not forgive.',
       statuses: [{
         id: 'sunbrand', name: 'Sunbrand', duration: 5, damage_taken_mult: 1.2,
         tint: 'base', icon: 'eye', overlay: 'glow', vfx: 'brand_halo',
@@ -175,9 +163,9 @@ export const PAIR_EXAMPLES: PairExample[] = [
     powers: ['tide', 'rain'],
     spec: {
       dsl: 1,
-      concept: 'Mortar shells land as crashing waves that shove the crowd back down the path. Every fourth shell summons a monsoon: raindrops fall around the impact and each drop washes enemies back again.',
-      name: 'Monsoon Barrage',
-      flavor: 'Forecast: heavy, with a chance of retreat.',
+      concept: 'Shells shove enemies back; every 4th shell brings a pushing downpour.',
+      name: 'Flood Shells',
+      flavor: 'Forecast: retreat.',
       projectiles: [{
         id: 'raindrop', motion: 'sky_drop', splash: 0.6, amount: { dmg: 0.35 }, type: 'frost',
         on_hit: [{ action: 'knockback', to: 'target', distance: 0.25 }],
@@ -218,9 +206,9 @@ export const TRIPLE_EXAMPLE: { tower: string; powers: [string, string, string]; 
   powers: ['frost', 'echo', 'storm'],
   spec: {
     ...PAIR_EXAMPLES[0].spec,
-    concept: 'Frozen enemies become bells that echo every strike to the others. Storm adds the thunder: when a bell thaws it cracks open and hurls lightning at two nearby enemies.',
-    name: 'Thunder-Rung Carillon',
-    flavor: 'The last note is always thunder.',
+    concept: 'Frozen enemies turn into bells; thawing bells throw lightning at two others.',
+    name: 'Thunder Bells',
+    flavor: 'The last note is thunder.',
     vfx: [
       ...PAIR_EXAMPLES[0].spec.vfx!,
       {

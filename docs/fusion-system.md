@@ -37,9 +37,9 @@ interprets. The schema lives in `src/effects/dsl.ts`, which also generates the J
 ```jsonc
 {
   "dsl": 1,
-  "concept": "one sentence: the idea a player gets in five seconds",
-  "name": "Glacial Carillon",          // 1-3 words, unique, at most 32 characters
-  "flavor": "a line of flavour text",
+  "concept": "Frozen enemies turn into bells; breaking one rings all the others twice.",  // ≤ ~12 words
+  "name": "Ice Bells",                 // 1-2 plain words saying what it does (3 if truly needed), unique
+  "flavor": "Hear that? Ice.",         // ≤ ~6 words
   "stats":   { "damage_mult": 0.9, "rate_mult": 1.1, "chains": 1, "crit_chance": 0.1 },
   "attack":  { "motion": "sine", "look": { ... } },  // optional change to the basic attack
   "vars":        [ ... ],   // up to 3 counters that live on the tower
@@ -156,15 +156,25 @@ request(key)
 - **The system prompt** gives the model:
   - its role, The Forge;
   - how ordered sockets work;
-  - what makes a great fusion: one clear idea, emergent rather than additive, built for its
-    chassis, at least one new noun, a payoff moment, and a look that matches the concept;
-  - what to avoid: pure stat boosts, re-used power effects, dead mechanics, loops, glued-on
-    names;
+  - what makes a great fusion: one clear idea where the powers interact, built for its
+    chassis, a visible payoff moment, and a look that matches the concept;
+  - **keep it simple and concrete**:
+    - a pair is 2 or 3 rules around one cause and effect you could say out loud ("every 3rd
+      hit freezes", "poisoned enemies explode on death");
+    - direct triggers and actions, no counters or multi-stage chains, and at most one custom
+      status, projectile or zone;
+    - an evolution adds one more simple rule;
+  - **words**:
+    - the name is 1–2 plain words that say what it does, like an ability name ("Ice Bells",
+      "Poison Well"); 3 words only if truly necessary or brilliant;
+    - never a blend of the power names or their other forms ("Frozen Echo");
+    - the concept is one plain sentence of at most 12 words, and the flavour at most 6 words;
+  - what to avoid: pure stat boosts, re-used power effects, dead mechanics, loops, long text;
   - game facts for scale: map size, speeds, dimensions, modifiers, ranges, HP growth;
   - the full language cheat sheet and the output format.
-- **Worked examples:** four hand-made pair fusions (Glacial Carillon, Miasma Maelstrom, Solar
-  Verdict, Monsoon Barrage) and one evolution (Thunder-Rung Carillon). All of them pass
-  validation, lint and balance. The pair prompt picks the examples that best match the
+- **Worked examples:** four hand-made pair fusions (Ice Bells, Poison Well, Judgment Beam,
+  Flood Shells), each 2–3 rules, and one evolution (Ice Bells + Storm → Thunder Bells). All of
+  them pass validation, lint and balance. The pair prompt picks the examples that best match the
   request.
 - **The pair prompt:**
   - the tower card (chassis, stats, what its attack does);
@@ -202,7 +212,10 @@ whole pipeline can run in tests.
 - the base power isn't recognisable in the mechanics;
 - the secondary power doesn't visibly shape them;
 - it's nearly identical to the plain base power;
-- it's visually bland, using fewer than three visual hooks, custom effects or vfx actions.
+- it's visually bland, using fewer than three visual hooks, custom effects or vfx actions;
+- the name is over 3 words, or is made only of the powers' names and forms;
+- the concept is over 18 words, or the flavour over 10;
+- for a pair: more than 4 rules, or more than 2 custom statuses/projectiles/zones.
 
 Softer notes, such as the secondary dominating the base or no custom vfx, are logged but don't
 block. For triples, lint also checks that the tertiary changed something and compares the spec
@@ -333,9 +346,12 @@ Static files: `index.html` and `src/**` (TypeScript is served stripped of its ty
 `offlineFusion` (`src/effects/combiner.ts`) builds a playable combination from the power specs
 with no model:
 
-- the base power at full strength and the secondary scaled to 0.6 (the tertiary to 0.3);
+- kept simple: up to two of the base power's rules at full strength, then the first rule of
+  the secondary (scaled to 0.6) and of the tertiary (scaled to 0.3);
 - template ids prefixed per socket (`a_`, `b_`, `c_`);
-- one of 16 deterministic "twists" chosen by the key.
+- one of 16 deterministic "twists" chosen by the key;
+- a plain name and concept from the base power and the twist, such as "Frost Shatter":
+  "Frost shaped by Echo; extra damage to chilled enemies."
 
 It is the fallback everywhere: before a forge result arrives, when the server is down, and as
 the provisional spec when the model fails. It also powers the playtest bot and the tests.

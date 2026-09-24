@@ -118,9 +118,23 @@ rarity.
 ### 4.4 Sockets and order
 
 A tower has up to three sockets, opened by tier: tier 1 opens the base, tier 2 the secondary
-and tier 3 the tertiary. Socketing costs 75 / 150 / 300 gold. Order matters: the **base**
-power leads, the **secondary** bends it, and the **tertiary** adds a twist. Only the last
-card can be removed, and it goes back to the hand.
+and tier 3 the tertiary. Order matters: the **base** power leads, the **secondary** bends it,
+and the **tertiary** adds a twist. Only the last card can be removed. It goes back to the
+hand, and the gold paid for its socket is spent.
+
+**Socketing costs** climb steeply by slot (80 / 240 / 720 gold for a Common card), and rarer
+cards cost more. The rarity markup is biggest in the base slot, where a card carries about
+60% of the fusion, and tapers off in later slots, where it carries less:
+
+| Card | Base slot | Secondary | Tertiary |
+| --- | --- | --- | --- |
+| Common | 80 | 240 | 720 |
+| Rare | 160 (×2) | 360 (×1.5) | 865 (×1.2) |
+| Epic | 240 (×3) | 480 (×2) | 1,010 (×1.4) |
+| Legendary | 400 (×5) | 720 (×3) | 1,295 (×1.8) |
+
+So a Legendary is worth saving for the right tower and the moment you can afford it. The hand
+shows each card's price for the selected tower.
 
 - **One power:** the power's own hand-made upgrade for that tower.
 - **Two powers:** a pair fusion. **Three powers:** a triple, which evolves its pair.
@@ -234,8 +248,8 @@ wave you can keep going in endless mode.
 
 **Tuning target:** the playtest bot (`tools/bot.ts`) builds greedily, sockets its best
 cards, keeps the rarest card from each pack, never shops, and gets fusions only from the
-offline combiner. On Casual it clears Act I. On Normal it loses to the Act I final bosses on
-most maps, falls somewhere in Act II, and falls in Act III around the 3D → 4D line. Players
+offline combiner. On Casual it clears most Act I runs. On Normal it usually loses to the
+Act I final boss, falls somewhere in Act II, and falls in Act III around the 3D → 4D line. Players
 who pick their cards with a plan and design fusions that really synergise should get much
 further.
 

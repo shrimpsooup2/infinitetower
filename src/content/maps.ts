@@ -17,7 +17,7 @@ export const MAPS: MapDef[] = [
   // ---------------------------------------------------------------- Act I
   {
     id: 'meadow', name: 'Meadow', blurb: 'A gentle serpentine. Learn the ropes here.', act: 1, waves: 20,
-    cols: 24, rows: 14, seed: 101, difficulty: 1, hpScale: 0.9, pathMode: 'first',
+    cols: 24, rows: 14, seed: 101, difficulty: 1, hpScale: 0.8, pathMode: 'first',
     paths: [[[-1, 3], [6, 3], [6, 10], [12, 10], [12, 3], [18, 3], [18, 10], [24, 10]]],
     air: [[[-1, 1], [24, 12]]],
     blocked: [[2, 7], [3, 11], [9, 1], [15, 12], [21, 5], [21, 6], [9, 6], [15, 6]],

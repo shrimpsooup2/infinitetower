@@ -66,6 +66,7 @@ export class Game {
   private previewKey = '';
   private buildKey = '';
   private hudKey = '';
+  private rulesOpen = false;
   private tut: Tutorial | null = null;
   private modalPause = false;
   private packKey = '';
@@ -595,8 +596,18 @@ export class Game {
       c.rarity > 0 ? h('span', { class: 'rar' }, rar.name) : null,
       h('span', { class: 'glyph' }, p.icon),
       h('span', { class: 'nm' }, p.name),
+      this.socketPrice(c),
     );
     return el;
+  }
+
+  /** What this card would cost to socket into the selected tower's next slot. */
+  private socketPrice(c: Card): HTMLElement | null {
+    const t = this.selected;
+    if (!t || t.tier < t.sockets.length + 1) return null;
+    const cost = this.w.socketCost(t, c.rarity);
+    if (cost === null) return null;
+    return h('span', { class: `sockcost ${this.w.gold < cost ? 'poor' : ''}` }, `${cost}g`);
   }
 
   private showTip(anchor: HTMLElement, c: Card): void {
@@ -616,7 +627,7 @@ export class Game {
 
   private refreshHand(): void {
     const w = this.w;
-    const key = `${w.cards.map((c) => c.uid).join(',')}:${this.armed}:${this.selected?.id}`;
+    const key = `${w.cards.map((c) => c.uid).join(',')}:${this.armed}:${this.selected?.id}:${this.selected?.sockets.length}:${this.selected?.tier}:${Math.floor(w.gold / 10)}`;
     if (key === this.handKey) return;
     this.handKey = key;
     if (!w.cards.length) {
@@ -723,9 +734,9 @@ export class Game {
       info.push(
         h('div', { class: 'fusion-name', style: { color: rt.colors.base } }, title),
         this.statusBadge(t) ?? h('span', { class: 'badge' }, 'Single power'),
-        h('div', { class: 'flavor' }, rt.spec.flavor),
-        t.sockets.length > 1 ? h('div', { class: 'info-card muted' }, rt.spec.concept) : null,
-        h('ul', { class: 'rules' }, ...lines.map((l) => h('li', null, l))),
+        h('div', { class: 'concept' }, rt.spec.concept),
+        rt.spec.flavor ? h('div', { class: 'flavor' }, rt.spec.flavor) : null,
+        this.rulesDetails(lines),
       );
       const rf = rarityFactor(t.cards.map((c) => c.rarity));
       if (rf > 1.001) info.push(h('div', { class: 'small o' }, `Card rarity bonus: ×${rf.toFixed(2)} effect strength`));
@@ -744,7 +755,7 @@ export class Game {
       const next = i === t.cards.length;
       return h('div', { class: `socket ${locked ? 'locked' : ''}` },
         h('span', { class: 'role' }, SOCKET_ROLE[i]),
-        locked ? h('span', null, `Tier ${i + 1}`) : next ? h('span', null, `${SOCKET_COST[i]}g`) : h('span', null, '—'),
+        locked ? h('span', null, `Tier ${i + 1}`) : next ? h('span', null, `${SOCKET_COST[i]}g+`) : h('span', null, '—'),
       );
     }));
     // Preview of what a hovered card would make (only if YOU have made it before).
@@ -753,12 +764,13 @@ export class Game {
     if (hc && t.sockets.length < 3) {
       const k = fusionKey(t.def.id, [...t.sockets, hc.power]);
       const known = t.sockets.length + 1 >= 2 ? this.d.codex.get(k) : null;
-      const block = w.socketBlocker(t);
+      const block = w.socketBlocker(t, hc.rarity);
+      const price = w.socketCost(t, hc.rarity);
       preview = h('div', { class: 'panel', style: { background: 'rgba(0,0,0,0.45)' } },
-        h('h3', null, `+ ${POWER_BY_ID.get(hc.power)!.name} as ${SOCKET_ROLE[t.sockets.length]}`),
+        h('h3', null, `+ ${POWER_BY_ID.get(hc.power)!.name} as ${SOCKET_ROLE[t.sockets.length]}${price !== null ? ` · ${price}g` : ''}`),
         block ? h('div', { class: 'small o', style: { color: '#ff8e8e' } }, block) : null,
         t.sockets.length === 0 ? h('div', { class: 'info-card' }, POWER_BY_ID.get(hc.power)!.blurb)
-          : known ? h('div', { class: 'col' }, h('div', { class: 'fusion-name' }, known.name), h('div', { class: 'flavor' }, known.flavor), h('div', { class: 'info-card' }, known.concept))
+          : known ? h('div', { class: 'col' }, h('div', { class: 'fusion-name' }, known.name), h('div', { class: 'concept' }, known.concept))
             : h('div', { class: 'info-card' }, '???'),
       );
     }
@@ -785,6 +797,14 @@ export class Game {
       preview,
       h('div', { class: 'panel' }, stats, targets, actions),
     );
+  }
+
+  /** The exact rules, folded away under the short concept; stays open once opened. */
+  private rulesDetails(lines: string[]): HTMLElement {
+    const d = h('details', { class: 'rules-box', attrs: this.rulesOpen ? { open: '' } : {}, on: { toggle: () => { this.rulesOpen = d.open; } } },
+      h('summary', null, 'Details'),
+      h('ul', { class: 'rules' }, ...lines.map((l) => h('li', null, l))));
+    return d;
   }
 
   private towerInfo(def: TowerDef): HTMLElement {

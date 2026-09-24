@@ -10,13 +10,19 @@ export interface RarityDef {
   name: string;
   color: string;
   mult: number;
+  /**
+   * Socketing this rarity into the BASE slot costs this many times the slot's
+   * base price. Later slots carry less of the fusion's strength, so the markup
+   * shrinks there (see SOCKET_RARITY_WEIGHT).
+   */
+  socketMult: number;
 }
 
 export const RARITIES: RarityDef[] = [
-  { id: 'common', name: 'Common', color: '#b8b8b8', mult: 1 },
-  { id: 'rare', name: 'Rare', color: '#00b2e1', mult: 1.2 },
-  { id: 'epic', name: 'Epic', color: '#bf7ff5', mult: 1.45 },
-  { id: 'legendary', name: 'Legendary', color: '#ffc629', mult: 1.75 },
+  { id: 'common', name: 'Common', color: '#b8b8b8', mult: 1, socketMult: 1 },
+  { id: 'rare', name: 'Rare', color: '#00b2e1', mult: 1.2, socketMult: 2 },
+  { id: 'epic', name: 'Epic', color: '#bf7ff5', mult: 1.45, socketMult: 3 },
+  { id: 'legendary', name: 'Legendary', color: '#ffc629', mult: 1.75, socketMult: 5 },
 ];
 
 /**

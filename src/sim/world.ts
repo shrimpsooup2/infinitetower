@@ -5,14 +5,14 @@
 import type {
   Card, DifficultyDef, Drone, Enemy, FxEvent, MapDef, Palette3, Projectile, SpecRuntime, SpecState, TargetMode, Tower, WaveDef, Zone,
 } from './types.ts';
-import { POWER_MIN_RARITY, rarityFactor, rollRarity } from '../content/rarity.ts';
+import { POWER_MIN_RARITY, RARITIES, rarityFactor, rollRarity } from '../content/rarity.ts';
 import { PACK_BY_ID, PACK_EVERY, SCRAP_VALUE, type PackDef } from '../content/packs.ts';
 import type { FusionSpec, VfxDef } from '../effects/types.ts';
 import { Path } from './path.ts';
 import { Rng } from './rng.ts';
 import { SpatialHash } from './spatial.ts';
 import { dist2, hashString } from './math.ts';
-import { TOWER_BY_ID, SOCKET_COST, towerCostToTier } from '../content/towers.ts';
+import { TOWER_BY_ID, SOCKET_COST, SOCKET_RARITY_WEIGHT, towerCostToTier } from '../content/towers.ts';
 import { POWERS, POWER_BY_ID } from '../content/powers.ts';
 import { BOSS_WAVES } from '../content/enemies.ts';
 import { DIFFICULTY_BY_ID, RULES } from '../content/rules.ts';
@@ -295,18 +295,25 @@ export class World {
     if (t) t.targetMode = mode;
   }
 
-  socketCost(t: Tower): number | null {
+  /**
+   * Gold to socket a card of this rarity into the tower's next slot. The slot
+   * price climbs steeply; the rarity markup is biggest in the base slot and
+   * tapers off in later slots, where a card carries less of the fusion.
+   */
+  socketCost(t: Tower, rarity = 0): number | null {
     const i = t.sockets.length;
     if (i >= 3) return null;
-    return SOCKET_COST[i];
+    const markup = 1 + ((RARITIES[rarity]?.socketMult ?? 1) - 1) * SOCKET_RARITY_WEIGHT[i];
+    return Math.round((SOCKET_COST[i] * markup) / 5) * 5;
   }
 
   /** Why a power cannot be socketed right now, or null if it can. */
-  socketBlocker(t: Tower): string | null {
+  socketBlocker(t: Tower, rarity = 0): string | null {
     const i = t.sockets.length;
     if (i >= 3) return 'All 3 sockets are full';
     if (t.tier < i + 1) return `Upgrade to tier ${i + 1} to open this socket`;
-    if (this.gold < SOCKET_COST[i]) return `Needs ${SOCKET_COST[i]} gold`;
+    const cost = this.socketCost(t, rarity)!;
+    if (this.gold < cost) return `Needs ${cost} gold`;
     return null;
   }
 
@@ -316,9 +323,9 @@ export class World {
     if (!t) return 'No tower';
     const ci = this.cards.findIndex((c) => c.uid === cardUid);
     if (ci < 0) return 'You do not hold that card';
-    const block = this.socketBlocker(t);
+    const block = this.socketBlocker(t, this.cards[ci].rarity);
     if (block) return block;
-    const cost = SOCKET_COST[t.sockets.length];
+    const cost = this.socketCost(t, this.cards[ci].rarity)!;
     this.gold -= cost;
     t.socketGold += cost;
     const [card] = this.cards.splice(ci, 1);

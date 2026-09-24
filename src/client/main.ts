@@ -301,9 +301,10 @@ class App {
             e.worldFirst ? h('span', { class: 'badge red' }, 'WORLD FIRST') : null,
             e.discoveredAt ? h('span', { class: 'badge' }, fmtDate(e.discoveredAt)) : null,
           ),
-          h('div', { class: 'flavor' }, e.flavor),
-          h('div', { class: 'info-card' }, e.concept),
-          e.spec ? h('ul', { class: 'rules' }, ...describeSpec(e.spec, { potency: e.potency }).map((l) => h('li', null, l))) : null,
+          h('div', { class: 'concept' }, e.concept),
+          e.flavor ? h('div', { class: 'flavor' }, e.flavor) : null,
+          e.spec ? h('details', { class: 'rules-box' }, h('summary', null, 'Details'),
+            h('ul', { class: 'rules' }, ...describeSpec(e.spec, { potency: e.potency }).map((l) => h('li', null, l)))) : null,
         );
       }));
     };

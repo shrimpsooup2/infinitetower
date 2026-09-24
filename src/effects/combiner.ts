@@ -79,6 +79,10 @@ function mergeStats(base: StatBlock | undefined, add: StatBlock | undefined, f: 
 
 interface Twist {
   name: string;
+  /** A plain word for what the twist does, used in the fusion's name. */
+  noun: string;
+  /** What the twist does, in a few plain words, for the concept line. */
+  does: string;
   flavor: string;
   rule: Rule;
 }
@@ -86,48 +90,51 @@ interface Twist {
 const d = (x: number): Value => ({ dmg: x });
 
 export const TWISTS: Twist[] = [
-  { name: 'Resonant', flavor: 'Every sixth strike rings out.', rule: { when: { event: 'every_nth_attack', n: 6 }, do: [{ action: 'explode', at: 'target', radius: 1.2, amount: d(0.6), vfx: 'ring' }] } },
-  { name: 'Haunted', flavor: 'The fallen keep fighting for a moment.', rule: { when: { event: 'on_kill' }, if: [{ check: 'chance', p: 0.5 }], do: [{ action: 'repeat_attack', mult: 0.5 }] } },
-  { name: 'Charged', flavor: 'The air around it crackles.', rule: { when: { event: 'every', seconds: 3 }, do: [{ action: 'apply_status', to: { select: 'random_in_range', n: 2 }, status: 'shock' }, { action: 'vfx', effect: 'sparks', at: 'random_in_range' }] } },
-  { name: 'Undertow', flavor: 'Something pulls back.', rule: { when: { event: 'on_hit' }, if: [{ check: 'chance', p: 0.1 }], do: [{ action: 'knockback', to: 'target', distance: 0.3 }] } },
-  { name: 'Fervent', flavor: 'Victory is fuel.', rule: { when: { event: 'on_kill' }, do: [{ action: 'modify_tower', to: 'self', stat: 'rate', mult: 1.2, duration: 2 }] } },
-  { name: 'Brittle', flavor: 'Cold things break.', rule: { when: { event: 'on_hit' }, if: [{ check: 'target_has_status', status: 'chill' }], do: [{ action: 'damage', to: 'target', amount: d(0.3) }] } },
-  { name: 'Kindled', flavor: 'Fire eats armour.', rule: { when: { event: 'on_hit' }, if: [{ check: 'target_has_status', status: 'burn' }], do: [{ action: 'apply_status', to: 'target', status: 'weaken' }] } },
-  { name: 'Lodestar', flavor: 'All roads lead here.', rule: { when: { event: 'every', seconds: 4 }, do: [{ action: 'pull', to: { select: 'strongest_in_range', n: 3 }, toward: 'self', strength: 0.4 }] } },
-  { name: 'Ominous', flavor: 'It sees you coming.', rule: { when: { event: 'on_enemy_enters_range' }, if: [{ check: 'chance', p: 0.3 }], do: [{ action: 'apply_status', to: 'target', status: 'mark' }] } },
-  { name: 'Syncopated', flavor: 'Off the beat, on the kill.', rule: { when: { event: 'on_beat', n: 8 }, do: [{ action: 'repeat_attack', mult: 0.8 }] } },
-  { name: 'Shrapnel', flavor: 'Crits come apart.', rule: { when: { event: 'on_crit' }, do: [{ action: 'explode', at: 'target', radius: 0.8, amount: d(0.5), vfx: 'burst' }] } },
-  { name: 'Scattering', flavor: 'Now and then it just lets go.', rule: { when: { event: 'every_nth_attack', n: 5 }, do: [{ action: 'fire_projectile', projectile: 'bullet', aim: 'random', count: 3, spread: 360 }] } },
-  { name: 'Hungry', flavor: 'It finishes what it starts.', rule: { when: { event: 'on_hit' }, if: [{ check: 'target_hp_below', pct: 25 }], do: [{ action: 'damage', to: 'target', amount: d(0.4) }] } },
-  { name: 'Dawning', flavor: 'First light hurts most.', rule: { when: { event: 'on_hit' }, if: [{ check: 'first_hit_on_target' }], do: [{ action: 'damage', to: 'target', amount: d(0.8) }, { action: 'vfx', effect: 'flash', at: 'target' }] } },
-  { name: 'Wardbreaking', flavor: 'Shields are a suggestion.', rule: { when: { event: 'on_hit' }, if: [{ check: 'target_is', trait: 'shielded' }], do: [{ action: 'break_shield', to: 'target', pct: 15 }] } },
-  { name: 'Grim', flavor: 'The end is catching.', rule: { when: { event: 'on_enemy_dies_in_range' }, if: [{ check: 'chance', p: 0.3 }], do: [{ action: 'apply_status', to: { select: 'nearest', n: 1, around: 'point' }, status: 'fear', duration: 0.6 }] } },
+  { name: 'Resonant', noun: 'Pulse', does: 'every 6th hit bursts', flavor: 'Every sixth strike rings out.', rule: { when: { event: 'every_nth_attack', n: 6 }, do: [{ action: 'explode', at: 'target', radius: 1.2, amount: d(0.6), vfx: 'ring' }] } },
+  { name: 'Haunted', noun: 'Encore', does: 'kills can trigger a free attack', flavor: 'The fallen keep fighting for a moment.', rule: { when: { event: 'on_kill' }, if: [{ check: 'chance', p: 0.5 }], do: [{ action: 'repeat_attack', mult: 0.5 }] } },
+  { name: 'Charged', noun: 'Static', does: 'shocks nearby enemies every 3 s', flavor: 'The air around it crackles.', rule: { when: { event: 'every', seconds: 3 }, do: [{ action: 'apply_status', to: { select: 'random_in_range', n: 2 }, status: 'shock' }, { action: 'vfx', effect: 'sparks', at: 'random_in_range' }] } },
+  { name: 'Undertow', noun: 'Pushback', does: 'hits sometimes knock enemies back', flavor: 'Something pulls back.', rule: { when: { event: 'on_hit' }, if: [{ check: 'chance', p: 0.1 }], do: [{ action: 'knockback', to: 'target', distance: 0.3 }] } },
+  { name: 'Fervent', noun: 'Frenzy', does: 'kills speed it up', flavor: 'Victory is fuel.', rule: { when: { event: 'on_kill' }, do: [{ action: 'modify_tower', to: 'self', stat: 'rate', mult: 1.2, duration: 2 }] } },
+  { name: 'Brittle', noun: 'Shatter', does: 'extra damage to chilled enemies', flavor: 'Cold things break.', rule: { when: { event: 'on_hit' }, if: [{ check: 'target_has_status', status: 'chill' }], do: [{ action: 'damage', to: 'target', amount: d(0.3) }] } },
+  { name: 'Kindled', noun: 'Meltdown', does: 'burning enemies are weakened', flavor: 'Fire eats armour.', rule: { when: { event: 'on_hit' }, if: [{ check: 'target_has_status', status: 'burn' }], do: [{ action: 'apply_status', to: 'target', status: 'weaken' }] } },
+  { name: 'Lodestar', noun: 'Magnet', does: 'pulls the strongest enemies in', flavor: 'All roads lead here.', rule: { when: { event: 'every', seconds: 4 }, do: [{ action: 'pull', to: { select: 'strongest_in_range', n: 3 }, toward: 'self', strength: 0.4 }] } },
+  { name: 'Ominous', noun: 'Omen', does: 'marks enemies as they arrive', flavor: 'It sees you coming.', rule: { when: { event: 'on_enemy_enters_range' }, if: [{ check: 'chance', p: 0.3 }], do: [{ action: 'apply_status', to: 'target', status: 'mark' }] } },
+  { name: 'Syncopated', noun: 'Rhythm', does: 'fires an extra shot on the beat', flavor: 'Off the beat, on the kill.', rule: { when: { event: 'on_beat', n: 8 }, do: [{ action: 'repeat_attack', mult: 0.8 }] } },
+  { name: 'Shrapnel', noun: 'Shrapnel', does: 'crits explode', flavor: 'Crits come apart.', rule: { when: { event: 'on_crit' }, do: [{ action: 'explode', at: 'target', radius: 0.8, amount: d(0.5), vfx: 'burst' }] } },
+  { name: 'Scattering', noun: 'Scatter', does: 'every 5th shot sprays bullets', flavor: 'Now and then it just lets go.', rule: { when: { event: 'every_nth_attack', n: 5 }, do: [{ action: 'fire_projectile', projectile: 'bullet', aim: 'random', count: 3, spread: 360 }] } },
+  { name: 'Hungry', noun: 'Finisher', does: 'extra damage to weak enemies', flavor: 'It finishes what it starts.', rule: { when: { event: 'on_hit' }, if: [{ check: 'target_hp_below', pct: 25 }], do: [{ action: 'damage', to: 'target', amount: d(0.4) }] } },
+  { name: 'Dawning', noun: 'Opener', does: 'big first hit on each enemy', flavor: 'First light hurts most.', rule: { when: { event: 'on_hit' }, if: [{ check: 'first_hit_on_target' }], do: [{ action: 'damage', to: 'target', amount: d(0.8) }, { action: 'vfx', effect: 'flash', at: 'target' }] } },
+  { name: 'Wardbreaking', noun: 'Shieldbreak', does: 'hits crack shields', flavor: 'Shields are a suggestion.', rule: { when: { event: 'on_hit' }, if: [{ check: 'target_is', trait: 'shielded' }], do: [{ action: 'break_shield', to: 'target', pct: 15 }] } },
+  { name: 'Grim', noun: 'Dread', does: 'deaths scare nearby enemies', flavor: 'The end is catching.', rule: { when: { event: 'on_enemy_dies_in_range' }, if: [{ check: 'chance', p: 0.3 }], do: [{ action: 'apply_status', to: { select: 'nearest', n: 1, around: 'point' }, status: 'fear', duration: 0.6 }] } },
 ];
 
 export function offlineFusion(tower: TowerDef, powers: PowerDef[], key: string): FusionSpec {
   const [p0, p1, p2] = powers;
   const base = prefixSpec(p0.spec, 'a_');
-  const parts: { spec: FusionSpec; f: number }[] = [{ spec: base, f: 1 }];
-  if (p1) parts.push({ spec: scale(prefixSpec(p1.spec, 'b_'), 0.6) as FusionSpec, f: 0.6 });
-  if (p2) parts.push({ spec: scale(prefixSpec(p2.spec, 'c_'), 0.3) as FusionSpec, f: 0.3 });
+  // Kept simple: the base leads with up to two rules, each later power adds its first rule.
+  const parts: { spec: FusionSpec; f: number; rules: number }[] = [{ spec: base, f: 1, rules: p1 ? 2 : LIMITS.rules }];
+  if (p1) parts.push({ spec: scale(prefixSpec(p1.spec, 'b_'), 0.6) as FusionSpec, f: 0.6, rules: 1 });
+  if (p2) parts.push({ spec: scale(prefixSpec(p2.spec, 'c_'), 0.3) as FusionSpec, f: 0.3, rules: 1 });
 
   const twist = TWISTS[hashString(key) % TWISTS.length];
   const merged: FusionSpec = {
     dsl: 1,
-    concept: `${p0.name} at the core, shaped by ${p1?.name ?? '-'}${p2 ? `, with a touch of ${p2.name}` : ''} (${twist.name.toLowerCase()} twist).`,
-    name: `${p2 ? twist.name + ' ' : ''}${p0.adj} ${p1 ? p1.noun : p0.noun}`.slice(0, 32),
+    concept: p1
+      ? `${p0.name} shaped by ${p1.name}${p2 ? ` and ${p2.name}` : ''}; ${twist.does}.`
+      : `${p0.name}; ${twist.does}.`,
+    name: `${p0.name} ${twist.noun}`.slice(0, 32),
     flavor: twist.flavor,
     stats: undefined,
     rules: [],
   };
-  for (const { spec, f } of parts) {
+  for (const { spec, f, rules } of parts) {
     merged.stats = mergeStats(merged.stats, spec.stats, f);
     merged.vars = [...(merged.vars ?? []), ...(spec.vars ?? [])];
     merged.statuses = [...(merged.statuses ?? []), ...(spec.statuses ?? [])];
     merged.projectiles = [...(merged.projectiles ?? []), ...(spec.projectiles ?? [])];
     merged.zones = [...(merged.zones ?? []), ...(spec.zones ?? [])];
     merged.vfx = [...(merged.vfx ?? []), ...(spec.vfx ?? [])];
-    merged.rules.push(...spec.rules);
+    merged.rules.push(...spec.rules.slice(0, rules));
   }
   merged.rules.push(twist.rule);
   if (!merged.stats || Object.keys(merged.stats).length === 0) delete merged.stats;

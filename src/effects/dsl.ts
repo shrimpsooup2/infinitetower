@@ -427,9 +427,9 @@ export const RuleS = S.obj({
 
 export const SpecS = S.obj<FusionSpec>({
   dsl: S.opt(S.lit(1 as const)),
-  concept: S.str(320),
+  concept: S.str(160),
   name: S.str(32),
-  flavor: S.str(140),
+  flavor: S.str(80),
   stats: S.opt(StatBlockS),
   attack: S.opt(S.obj({ motion: S.opt(S.enm(ATTACK_MOTIONS)) })),
   vars: S.opt(S.arr(S.obj({ id: S.id(), max: S.opt(S.num(1, 100000)), reset: S.opt(S.enm(['never', 'wave_start', 'idle'] as const)) }), 0, LIMITS.vars)),

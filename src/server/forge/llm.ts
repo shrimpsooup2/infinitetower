@@ -97,17 +97,23 @@ export class MockLLM implements LLM {
     const powers = parsed.powers.map((p) => POWER_BY_ID.get(p)!);
     const isRepair = messages.length > 2;
     const spec = powers.length === 3 ? this.evolve(messages, tower, powers, o.key!) : offlineFusion(tower, powers, o.key!);
-    spec.name = `Mock ${powers.map((p) => p.noun).join(' ')} ${this.calls}`.slice(0, 32);
+    spec.name = `Mock ${this.calls}`;
     spec.concept = `Mock fusion for ${o.key}.`;
     spec.vfx = [...(spec.vfx ?? []).filter((v) => v.id !== 'mock_burst'), {
       id: 'mock_burst',
       layers: [{ kind: 'particles', count: 12, shape: 'star', direction: 'radial', speed: [2, 4], life: [0.3, 0.6], color: 'secondary', glow: true }],
     }];
     spec.visual = { ...(spec.visual ?? {}), kill: 'mock_burst', impact: spec.visual?.impact ?? 'pop', aura: spec.visual?.aura ?? 'halo' };
-    // Answer the most common repair request the way a model would.
-    const feedback = isRepair ? String(messages[messages.length - 1]?.content ?? '') : '';
-    if (/same trigger/.test(feedback) && spec.rules.length < 6) {
-      spec.rules.push({ when: { event: 'every_nth_attack', n: 4 }, do: [{ action: 'explode', at: 'target', radius: 1.2, amount: { dmg: 0.4 } }] });
+    // On a repair, do what a model asked to fix its design would: keep a pair to
+    // three rules and make sure not every rule fires on the same hit trigger.
+    if (isRepair && powers.length === 2) {
+      spec.rules = spec.rules.slice(0, 3);
+      const triggers = new Set(spec.rules.map((r) => r.when.event));
+      if (triggers.size === 1 && (triggers.has('on_hit') || triggers.has('on_attack'))) {
+        const payoff: FusionSpec['rules'][number] = { when: { event: 'every_nth_attack', n: 4 }, do: [{ action: 'explode', at: 'target', radius: 1.2, amount: { dmg: 0.4 } }] };
+        if (spec.rules.length >= 3) spec.rules[spec.rules.length - 1] = payoff;
+        else spec.rules.push(payoff);
+      }
     }
     await new Promise((r) => setTimeout(r, isRepair ? 5 : 20));
     return '```json\n' + JSON.stringify(spec) + '\n```';

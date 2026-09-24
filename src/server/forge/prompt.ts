@@ -12,7 +12,7 @@ import { PAIR_EXAMPLES, TRIPLE_EXAMPLE } from './examples.ts';
 import { POWER_BY_ID } from '../../content/powers.ts';
 import { TOWER_BY_ID } from '../../content/towers.ts';
 
-export const PROMPT_VERSION = 5;
+export const PROMPT_VERSION = 6;
 
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant';
@@ -31,13 +31,23 @@ Order matters: Frost>Echo and Echo>Frost are different fusions. The tower matter
 Every fusion you design is generated once and then shared with every player who ever makes that combination. It gets a public discovery number. Make it memorable.
 
 WHAT MAKES A GREAT FUSION
-- ONE clear, surprising idea a player understands after watching it for five seconds. Write that idea in "concept" before wiring anything.
-- Emergent, not additive. Do not just list the powers' effects side by side. Make them interact: one creates a condition the other exploits, one changes the shape or delivery of the other, a stored resource pays off later, a threshold triggers a transformation.
+- ONE clear idea a player understands after watching it for five seconds. Write that idea in "concept" before wiring anything.
+- The powers interact instead of sitting side by side: one creates a condition the other exploits, or one changes how the other is delivered (e.g. "poisoned enemies explode on death", "frozen enemies become bells that ring when one breaks", "every 4th shell brings a downpour").
 - Built for its chassis: beam towers do beam things, drone towers drone things, artillery lands from the sky, chain lightning jumps, rails pierce lines, sprays cover cones, the support Beacon empowers its neighbours.
-- Invents at least one new noun: a custom status, projectile or zone with its own behaviour and look (e.g. "Bellfrost", a "miasma well", a "raindrop").
-- Has a PAYOFF moment (a detonation, a chain reaction, a charged release, a toll) and makes that moment look spectacular with vfx and sound.
+- A PAYOFF moment the player can see (a burst, a toll, a pull, a strike from the sky), made spectacular with vfx and sound.
 - LOOKS like its concept. Visuals are half the design. Use the VFX language freely: particle emitters, beams, rings, spirals, orbiters, glows, trails, auras, impact and kill effects. A mist sprayer drifts soft translucent particles; a heavy laser is a thick glowing beam with a white core; a gravity well swirls inward; holy judgement drops pillars of light.
-- Readable: 2 to 5 rules. Each rule should be something a player could notice.
+
+KEEP IT SIMPLE AND CONCRETE (above all for pairs)
+- A PAIR (two powers) is 2 or 3 rules built around ONE cause and effect you could say out loud in a few words: "every 3rd hit freezes", "kills leave a poison puddle", "chilled enemies take double lightning", "branded enemies under 25% HP are executed".
+- Use direct triggers (on_hit, on_kill, every_nth_attack, on_crit, every) and direct actions (damage, explode, apply_status, knockback, pull, fire_projectile, create_zone). Avoid counters (vars), multi-stage chains and effects that only matter after several steps.
+- At most ONE custom status, projectile or zone, and only if the idea needs it.
+- An EVOLUTION (third power) adds one more simple rule on top. Complexity grows with sockets, never before.
+- Simple is not weak: the balancer scales the numbers, so a clear effect always ends up strong enough.
+
+WORDS (players read them on a small panel, so less is more)
+- "name": 1 or 2 plain words that say what it does or what it looks like, like an ability name (3 words only if it is truly necessary or a brilliant name): "Ice Bells", "Poison Well", "Judgment Beam", "Flood Shells", "Chain Freeze", "Gravity Mine". Never glue the powers' names or their other forms together ("Frozen Echo", "Glacial Resonance", "Venomous Gravity", "Rime Tempest" are all wrong). At most one word may be a power's name; the other must say what happens. At most 32 characters, and unique.
+- "concept": ONE short plain sentence, at most 12 words, saying what the player will see happen. No lore, no metaphors that need explaining. Good: "Frozen enemies turn into bells; breaking one rings all the others twice."
+- "flavor": at most 6 words of wit, or a tiny tagline.
 
 WHAT TO AVOID
 - Pure stat boosts ("+30% damage") as the main effect. Stats may support the idea, never be the idea.
@@ -45,10 +55,10 @@ WHAT TO AVOID
 - Mechanics that do nothing on this chassis (e.g. relying on projectile flight on a beam tower), or rules that need a target when their trigger has none.
 - Obsessing over numbers. Balance is automatic: the game simulates your fusion and scales every {"dmg": x} value, slow strength, knockback and CC duration until it lands at the right power level. Choose SHAPES and PROPORTIONS. Typical damage is {"dmg": 0.2} to {"dmg": 1.5}; reserve bigger values for rare payoffs.
 - Infinite loops and permanent crowd control; the engine clips them, and they balance badly.
-- Names that just glue the power names together. Names are evocative, 1 to 3 words, at most 32 characters, unique (e.g. "Glacial Carillon", "Miasma Maelstrom", "Solar Verdict").
+- Long text. Every extra word in concept or flavor makes the fusion harder to understand.
 
 GAME FACTS (for scale)
-Map: 24x14 tiles. Enemies are geometric shapes walking a path at 0.4 to 2 tiles/s, and they climb through dimensions: waves 1-20 are 2D polygons (3 to 14 sides; more sides = tougher, armor grows with sides; 11+ sides have shields, splitting, healing or blinking), waves 21-40 are 3D polyhedra (complex ones spawn, heal, shield, blink or revive), waves 41-60 are 4D polytopes that periodically phase out of reach (DoTs and zones still hurt them). Any group can be flying (Cannon, Mortar and Flame cannot hit flyers), a swarm of tiny copies, swift, elite (big, tough) or stealthy (must be revealed or marked). Bosses resist crowd control. Tower ranges: 2.2 (Flame) to 8.6 (Mortar) tiles. Towers attack 0.4 to 5 times per second. Enemy HP grows about 15% per wave, so late-game fusions must scale: synergies, chain reactions and multiplicative payoffs matter.
+Map: 24x14 tiles. Enemies are geometric shapes walking a path at 0.4 to 2 tiles/s, and they climb through dimensions: waves 1-20 are 2D polygons (3 to 14 sides; more sides = tougher, armor grows with sides; 11+ sides have shields, splitting, healing or blinking), waves 21-40 are 3D polyhedra (complex ones spawn, heal, shield, blink or revive), waves 41-60 are 4D polytopes that periodically phase out of reach (DoTs and zones still hurt them). Any group can be flying (Cannon, Mortar and Flame cannot hit flyers), a swarm of tiny copies, swift, elite (big, tough) or stealthy (must be revealed or marked). Bosses resist crowd control. Tower ranges: 2.2 (Flame) to 8.6 (Mortar) tiles. Towers attack 0.4 to 5 times per second. Enemy HP grows about 15% per wave; the balancer tunes damage, so focus on what the fusion does, not on scaling tricks.
 
 THE EFFECT LANGUAGE
 You never write code. You compose ONE JSON "fusion spec" from the building blocks below. Anything not listed does not exist.
@@ -121,7 +131,8 @@ TWIST SEED: "${twist}". Use it as the seed of the concept (interpret it freely, 
 ${avoidText}
 Before answering, check:
 - ${base.name} is the heart; ${secondary.name} visibly reshapes how it works; the twist seed shaped the idea.
-- At least one custom status, projectile or zone, with its own look.
+- It is SIMPLE: 2 or 3 rules, one cause and effect, no vars, at most one custom status/projectile/zone.
+- The name is 1-2 plain words saying what it does (3 only if truly necessary or brilliant), not a blend of "${base.name}"/"${secondary.name}" words. The concept is one sentence of at most 12 words. The flavor is at most 6 words.
 - At least one rule uses a trigger other than on_hit/on_attack.
 - Rules whose trigger provides no target never use "target".
 - Every damage amount uses {"dmg": x}.
@@ -148,7 +159,7 @@ export function triplePrompt(
 EXAMPLE OF AN EVOLUTION — ${exParent.spec.name} + Storm (tertiary):
 Parent: ${compact(exParent.spec)}
 Evolved: ${compact(ex.spec)}
-(It kept every parent rule and template, added one rule and one vfx, used the "tertiary" colour, and evolved the name.)
+(It kept every parent rule and template, added one rule and one vfx, used the "tertiary" colour, and swapped one word of the name.)
 
 NOW EVOLVE THIS FUSION.
 
@@ -165,7 +176,9 @@ Rules for an evolution:
 - Return the COMPLETE new spec, not a diff.
 - Keep the parent's rules and templates. You may modify at most 2 rules, remove at most 1 rule, add at most 2 rules and at most 2 new templates (statuses / projectiles / zones / vfx).
 - ${tertiary.name} must be clearly visible as a twist in the mechanics AND the visuals: use the "tertiary" colour somewhere prominent (a new vfx, an accent, a trail_color, a beam core...).
-- Evolve the name: keep its root and add or change one word (e.g. "Glacial Carillon" -> "Thunder-Rung Carillon"). Rewrite concept and flavor to include the twist.
+- Add ONE simple rule for the twist (at most two), in the same concrete style as the parent.
+- The name stays short (1-2 plain words, 3 only if truly necessary or brilliant): swap one word so it says what the twist adds (e.g. "Ice Bells" -> "Thunder Bells"). Never glue power names together.
+- Rewrite the concept as one sentence of at most 14 words that includes the twist; flavor at most 6 words.
 - Rules whose trigger provides no target never use "target". Every damage amount uses {"dmg": x}.
 
 Reply with the JSON object only.`;

@@ -5,7 +5,6 @@
 import type { World } from '../sim/world.ts';
 import type { Tower } from '../sim/types.ts';
 import { POWER_BY_ID } from '../content/powers.ts';
-import { SOCKET_COST } from '../content/towers.ts';
 import { h, mount } from './ui/dom.ts';
 
 export interface TutorialHost {
@@ -46,6 +45,11 @@ const towerTile = (t: Tutorial): Anchor => {
 };
 const topUp = (t: Tutorial, amount: number) => {
   if (t.w.gold < amount) t.w.gold = amount;
+};
+/** Enough gold to socket any card in the hand into the tutorial tower. */
+const topUpSocket = (t: Tutorial) => {
+  const x = tower(t);
+  if (x) topUp(t, Math.max(0, ...t.w.cards.map((c) => t.w.socketCost(x, c.rarity) ?? 0)));
 };
 /** Point at the hand when a tower is selected, otherwise at the tower. */
 const handOrTower = (t: Tutorial): Anchor => (t.host.selected() ? '.hand' : towerTile(t));
@@ -89,7 +93,7 @@ const STEPS: Step[] = [
   {
     text: (t) => (t.host.selected() ? 'Click a card to socket it into your Bolt. The tower gains that power.' : 'Select your Bolt, then click a card to socket it.'),
     anchor: handOrTower, side: 'above',
-    enter: (t) => topUp(t, SOCKET_COST[0]),
+    enter: topUpSocket,
     done: (t) => t.w.towers.some((x) => x.sockets.length >= 1),
   },
   {
@@ -101,7 +105,7 @@ const STEPS: Step[] = [
   {
     text: (t) => (t.host.selected() ? 'Socket it into the same tower. Two powers in one tower fuse into a brand-new ability.' : 'Select your Bolt again, then socket the new card.'),
     anchor: handOrTower, side: 'above',
-    enter: (t) => topUp(t, SOCKET_COST[1]),
+    enter: topUpSocket,
     done: (t) => t.w.towers.some((x) => x.sockets.length >= 2),
   },
   {

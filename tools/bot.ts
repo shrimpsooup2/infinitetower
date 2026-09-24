@@ -63,11 +63,10 @@ function act(w: World, tiles: [number, number][], state: { next: number }): void
   // Socket the best cards into towers with open sockets, strongest towers first.
   const byTier = [...w.towers].sort((a, b) => b.tier - a.tier || b.dmgTotal - a.dmgTotal);
   for (const t of byTier) {
-    while (w.cards.length && !w.socketBlocker(t) && t.sockets.length < t.tier) {
-      const cost = w.socketCost(t);
-      if (cost === null || w.gold < cost) break;
-      const best = [...w.cards].sort((a, b) => b.rarity - a.rarity)[0];
-      if (w.socket(t.id, best.uid)) break;
+    while (w.cards.length && t.sockets.length < t.tier) {
+      // The rarest card it can afford right now (rarer cards cost more to socket).
+      const card = [...w.cards].sort((a, b) => b.rarity - a.rarity).find((c) => !w.socketBlocker(t, c.rarity));
+      if (!card || w.socket(t.id, card.uid)) break;
     }
   }
   // Then build or upgrade. New towers only once the existing ones have grown,

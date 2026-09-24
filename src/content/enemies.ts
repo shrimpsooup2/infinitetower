@@ -101,10 +101,10 @@ const HYPER: EnemyDef[] = [
 
 // ------------------------------------------------------------------ bosses (limits of each dimension)
 const BOSSES: EnemyDef[] = [
-  E({ id: 'icosagon', name: 'The Icosagon', dim: 2, n: 20, color: '#ffd166', hp: 4200, speed: 0.42, armor: 6, bounty: 150, lives: 10, size: 0.75, cost: 0, intro: 0,
+  E({ id: 'icosagon', name: 'The Icosagon', dim: 2, n: 20, color: '#ffd166', hp: 3200, speed: 0.42, armor: 4, bounty: 150, lives: 10, size: 0.75, cost: 0, intro: 0,
     tenacity: 0.35, traits: ['boss'], abilities: [{ kind: 'stomp', every: 7, radius: 2.2, duration: 2.5 }],
     blurb: 'Twenty sides. Every 7 s it slams the ground, disabling towers within 2 tiles.' }),
-  E({ id: 'circle', name: 'The Circle', dim: 2, n: 0, shape: 'circle', color: '#ffffff', hp: 7000, shield: 2000, speed: 0.45, bounty: 250, lives: 20, size: 0.85, cost: 0, intro: 0,
+  E({ id: 'circle', name: 'The Circle', dim: 2, n: 0, shape: 'circle', color: '#ffffff', hp: 5800, shield: 1500, speed: 0.45, bounty: 250, lives: 20, size: 0.85, cost: 0, intro: 0,
     tenacity: 0.3, traits: ['boss', 'shielded'], abilities: [{ kind: 'phases', enemy: 'p12', count: 3 }],
     blurb: 'Infinite sides: the limit of Flatland. Sheds Dodecagons at 66% HP and rolls twice as fast below 33%.' }),
   E({ id: 'geodesic', name: 'The Geodesic', dim: 3, n: 80, poly: 'geodesic', color: '#8efffb', hp: 45000, shield: 8000, speed: 0.42, bounty: 350, lives: 15, size: 0.85, cost: 0, intro: 0,

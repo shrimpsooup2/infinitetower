@@ -103,8 +103,17 @@ export const TOWER_BY_ID = new Map(TOWERS.map((t) => [t.id, t]));
 /** Minimum seconds between on_attack events per chassis (fast chassis are throttled). */
 export const ATTACK_EVENT_MIN: Record<string, number> = { cone: 0.5, beam: 0.5, drones: 0.33 };
 
-/** Socket costs by slot index, and the tower tier each slot needs. */
-export const SOCKET_COST = [75, 150, 300];
+/**
+ * Gold to fill each socket (base, secondary, tertiary) with a Common card. Rarer
+ * cards cost more (RARITIES[].socketMult), so a Legendary is worth saving.
+ */
+export const SOCKET_COST = [80, 240, 720];
+/**
+ * How much of the rarity markup applies per slot. A rare card is worth most as
+ * the base (about 60% of the fusion) and least as the tertiary (about 10%):
+ * a Legendary costs x5 as the base, x3 as the secondary, x1.8 as the tertiary.
+ */
+export const SOCKET_RARITY_WEIGHT = [1, 0.5, 0.2];
 export const SOCKET_ROLE = ['Base', 'Secondary', 'Tertiary'] as const;
 
 export function towerCostToTier(def: TowerDef, tier: number): number {
