@@ -62,6 +62,8 @@ export interface MapProgress {
 export interface Progress {
   maps: Record<string, MapProgress>;
   runs: number;
+  /** Campaign stages already revealed on the world map (for the reveal animation). */
+  revealed?: number;
 }
 
 export function loadProgress(): Progress {
@@ -70,6 +72,13 @@ export function loadProgress(): Progress {
 
 export function saveProgress(p: Progress): void {
   write('it.progress.v1', p);
+}
+
+export function markRevealed(n: number): void {
+  const p = loadProgress();
+  if ((p.revealed ?? 0) >= n) return;
+  p.revealed = n;
+  saveProgress(p);
 }
 
 export function recordRun(mapId: string, diff: DifficultyDef['id'], wave: number, won: boolean): Progress {

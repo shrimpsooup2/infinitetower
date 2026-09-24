@@ -230,7 +230,12 @@ modifiers.
 
 ## 6. Campaign, maps and difficulty
 
-Three acts of five maps each. Beating a map unlocks the next one. Maps grow as the campaign
+Three acts of five maps each, laid out as stops on one winding trail across a world map (in the
+spirit of Battle Cats). Beating a map unlocks the next one. Everything past the furthest stop
+you have reached is hidden under cloud; beating a stage rolls the cloud back along the trail to
+the next stop, and once every stage is beaten the whole map stays open. Each stretch of land
+is drawn in the theme of the stage on it, and each stop shows which difficulties it has been
+cleared on. Maps grow as the campaign
 goes on, from 20 × 12 tiles to 30 × 17, and so does their look: the first maps are plain grey
 arenas, and later ones are drawn in richer themes.
 

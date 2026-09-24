@@ -13,8 +13,8 @@ import { PAL } from '../../content/colors.ts';
 
 type G = CanvasRenderingContext2D;
 
-type Prop = 'rock' | 'doodle' | 'bush' | 'wirecube' | 'mesa' | 'crystal' | 'pillar' | 'asteroid' | 'hypercube';
-type Scatter = 'tuft' | 'flower' | 'doodle' | 'pebble' | 'cactus' | 'crack' | 'shard' | 'plus' | 'star' | 'glyph' | 'spark';
+export type Prop = 'rock' | 'doodle' | 'bush' | 'wirecube' | 'mesa' | 'crystal' | 'pillar' | 'asteroid' | 'hypercube';
+export type Scatter = 'tuft' | 'flower' | 'doodle' | 'pebble' | 'cactus' | 'crack' | 'shard' | 'plus' | 'star' | 'glyph' | 'spark';
 type Ambient = 'none' | 'fireflies' | 'motes' | 'stars' | 'scan';
 
 export interface Theme {
@@ -171,7 +171,7 @@ function along(pts: [number, number][], start: number, step: number, end = 0.5):
 
 // ------------------------------------------------------------ props (obstacles and margin scenery)
 
-function drawProp(g: G, kind: Prop, x: number, y: number, r: number, t: Theme, rng: Rng): void {
+export function drawProp(g: G, kind: Prop, x: number, y: number, r: number, t: Theme, rng: Rng): void {
   const [c0, c1, c2] = t.propColors;
   const lw = Math.max(1, r * 0.12);
   g.save();
@@ -186,15 +186,17 @@ function drawProp(g: G, kind: Prop, x: number, y: number, r: number, t: Theme, r
       break;
     }
     case 'doodle': {
-      g.beginPath();
-      for (let i = 0; i < 6; i++) { const a = (i / 6) * Math.PI * 2 + rng.next() * 0.2; g.lineTo(Math.cos(a) * r * (0.85 + rng.next() * 0.2), Math.sin(a) * r * (0.85 + rng.next() * 0.2)); }
-      g.closePath();
+      const pts: [number, number][] = [];
+      for (let i = 0; i < 6; i++) { const a = (i / 6) * Math.PI * 2 + rng.next() * 0.2; pts.push([Math.cos(a) * r * (0.85 + rng.next() * 0.2), Math.sin(a) * r * (0.85 + rng.next() * 0.2)]); }
+      const outline = () => { g.beginPath(); for (const [px, py] of pts) g.lineTo(px, py); g.closePath(); };
+      outline();
       g.fillStyle = c0; g.fill();
       g.save(); g.clip();
       g.strokeStyle = c2; g.lineWidth = Math.max(1, r * 0.06);
       g.beginPath();
       for (let k = -r * 2; k < r * 2; k += r * 0.28) { g.moveTo(k, -r); g.lineTo(k + r, r); }
       g.stroke(); g.restore();
+      outline();
       g.strokeStyle = c1; g.lineWidth = Math.max(1, r * 0.09); g.stroke();
       break;
     }
@@ -288,7 +290,7 @@ function drawProp(g: G, kind: Prop, x: number, y: number, r: number, t: Theme, r
   g.restore();
 }
 
-function drawScatter(g: G, kind: Scatter, x: number, y: number, s: number, color: string, rng: Rng): void {
+export function drawScatter(g: G, kind: Scatter, x: number, y: number, s: number, color: string, rng: Rng): void {
   g.save();
   g.translate(x, y);
   g.strokeStyle = color;

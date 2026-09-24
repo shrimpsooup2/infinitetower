@@ -38,8 +38,9 @@ src/
   server/         app (HTTP, static + TS stripping, API, rate limit), db (store interface +
                   SQLite), firestore (Firestore store),
                   forge/ (prompt, examples, llm, pipeline, balancer, balance-worker), main
-  client/         main (title, campaign, codex, settings), game (loop, input, HUD, packs,
-                  hand, side panel), tutorial, forge client, storage, audio,
+  client/         main (title, campaign, codex, settings), campaign (the world map), game
+                  (loop, input, HUD, packs, hand, side panel), tutorial, forge client, storage,
+                  audio,
                   render/ (renderer, fx, draw, scenery, tower-art, enemy-art, geometry, pack-art),
                   ui/dom
 tests/            effects, sim, maps, forge, deploy, store (node:test)

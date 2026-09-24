@@ -16,7 +16,8 @@ import { PAL } from '../content/colors.ts';
 import { drawEnemyBody } from './render/enemy-art.ts';
 import { towerIcon } from './render/tower-art.ts';
 import { colorsFor } from '../sim/world.ts';
-import { drawScenery } from './render/scenery.ts';
+import { drawScenery, themeOf } from './render/scenery.ts';
+import { CampaignMap, ROMAN, DIFF_COLOR } from './campaign.ts';
 import type { DifficultyDef, MapDef } from '../sim/types.ts';
 
 class Attract {
@@ -163,31 +164,50 @@ class App {
 
   maps(): void {
     const p = loadProgress();
-    const render = () => {
-      const saved = loadRun();
-      this.screen(
-        h('div', { class: 'topbar' },
-          h('button', { class: 'btn grey', on: { click: () => this.title() } }, 'Back'),
-          h('h1', null, 'Campaign'),
-          h('div', { class: 'diffs' }, ...DIFFICULTIES.map((d) => h('button', { class: `btn ${this.selDiff === d.id ? 'gold active' : 'grey'}`, title: `Enemy HP x${d.hp}, ${d.lives} lives, ${d.gold} starting gold`, on: { click: () => { this.selDiff = d.id; render(); } } }, d.name))),
-          h('button', { class: 'btn green big', disabled: !this.unlocked(MAP_BY_ID.get(this.selMap)!), on: { click: () => { if (saved && !confirm('Starting a new run replaces your saved run. Continue?')) return; clearRun(); this.start(this.selMap, this.selDiff); } } }, 'Start'),
+    if (!this.unlocked(MAP_BY_ID.get(this.selMap)!)) this.selMap = [...MAPS].reverse().find((m) => this.unlocked(m))?.id ?? MAPS[0].id;
+    const card = h('div', { class: 'stagecard' });
+    const begin = () => {
+      if (loadRun() && !confirm('Starting a new run replaces your saved run. Continue?')) return;
+      clearRun();
+      this.start(this.selMap, this.selDiff);
+    };
+    const renderCard = () => {
+      const m = MAP_BY_ID.get(this.selMap)!;
+      const mp = p.maps[m.id];
+      const wins = DIFFICULTIES.filter((d) => mp?.won[d.id]);
+      mount(card,
+        mapPreview(m, 200),
+        h('div', { class: 'info' },
+          h('div', { class: 'row' }, h('h2', null, m.name), h('span', { class: 'stars' }, '★'.repeat(m.difficulty) + '☆'.repeat(5 - m.difficulty))),
+          h('div', { class: 'meta' }, `Act ${ROMAN[m.act - 1]} · ${ACTS[m.act - 1].name} · ${m.waves} waves · ${m.cols} × ${m.rows} · ${themeOf(m).name}`),
+          h('div', { class: 'meta' }, mp?.best ? `Best: wave ${mp.best}` : 'Not played yet'),
+          wins.length ? h('div', { class: 'chips' }, ...wins.map((d) => h('span', { class: 'chip', style: tone(DIFF_COLOR[d.id]) }, `Cleared on ${d.name}`))) : null,
         ),
-        h('div', { class: 'acts' }, ...ACTS.map((a) => h('div', { class: 'act' },
-          h('h2', null, `Act ${['I', 'II', 'III'][a.act - 1]} · ${a.name}`),
-          h('div', { class: 'maps' }, ...MAPS.filter((m) => m.act === a.act).map((m) => {
-            const unlocked = this.unlocked(m);
-            const mp = p.maps[m.id];
-            const wins = DIFFICULTIES.filter((d) => mp?.won[d.id]).map((d) => d.name);
-            return h('div', { class: `mapcard ${this.selMap === m.id ? 'sel' : ''} ${unlocked ? '' : 'locked'}`, on: { click: () => { if (unlocked) { this.selMap = m.id; render(); } } } },
-              mapPreview(m, 172),
-              h('div', { class: 'row' }, h('span', { class: 'nm grow' }, m.name), h('span', { class: 'stars' }, '★'.repeat(m.difficulty) + '☆'.repeat(5 - m.difficulty))),
-              h('div', { class: 'meta' }, unlocked ? `${m.waves} waves · best ${mp?.best ?? 0}${wins.length ? ` · beaten on ${wins.join(', ')}` : ''}` : 'Locked'),
-            );
-          })),
-        ))),
+        h('div', { class: 'go' },
+          h('div', { class: 'diffs' }, ...DIFFICULTIES.map((d) => h('button', { class: `btn ${this.selDiff === d.id ? 'gold active' : 'grey'}`, title: `Enemy HP x${d.hp}, ${d.lives} lives, ${d.gold} starting gold`, on: { click: () => { this.selDiff = d.id; renderCard(); } } }, d.name))),
+          h('button', { class: 'btn green big', on: { click: begin } }, 'Start'),
+        ),
       );
     };
-    render();
+    const world = new CampaignMap({
+      progress: p,
+      unlocked: (m) => this.unlocked(m),
+      selected: this.selMap,
+      onSelect: (id) => { this.selMap = id; renderCard(); },
+      onStart: begin,
+    });
+    const cleared = MAPS.filter((m) => Object.values(p.maps[m.id]?.won ?? {}).some(Boolean)).length;
+    this.screen(
+      h('div', { class: 'topbar' },
+        h('button', { class: 'btn grey', on: { click: () => this.title() } }, 'Back'),
+        h('h1', null, 'Campaign'),
+        h('div', { class: 'stat-line' }, `${cleared} / ${MAPS.length} stages cleared`),
+      ),
+      world.el,
+      card,
+    );
+    renderCard();
+    world.mounted();
   }
 
   private start(mapId: string, diff: DifficultyDef['id']): void {
