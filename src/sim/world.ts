@@ -3,7 +3,7 @@
 // server's balance solver and the headless playtest bot all run this.
 
 import type {
-  Card, DifficultyDef, Drone, Enemy, FxEvent, MapDef, Palette3, PowerDef, Projectile, SpecRuntime, SpecState, TargetMode, Tower, WaveDef, Zone,
+  Card, DifficultyDef, Drone, Enemy, FxEvent, MapDef, Palette3, PowerDef, Projectile, SpecRuntime, SpecState, TargetMode, TempMod, Tower, WaveDef, Zone,
 } from './types.ts';
 import { POWER_MIN_RARITY, RARITIES, rarityFactor, rollRarity } from '../content/rarity.ts';
 import { PACK_BY_ID, PACK_EVERY, FAMILY_PACK_EVERY, FAMILY_ORDER, SCRAP_VALUE, type PackDef } from '../content/packs.ts';
@@ -790,6 +790,15 @@ export class World {
     return this.active.length === 0 && this.enemies.length === 0;
   }
 
+  /**
+   * Quiescent, and nothing left in flight: no shots, zones or delayed effects
+   * (orbiting shots and mines stay for good). A snapshot taken now restores to
+   * a game that plays on exactly like this one.
+   */
+  settled(): boolean {
+    return this.quiescent() && !this.zones.length && !this.scheduled.length && this.projectiles.every((p) => p.motion === 'orbit' || p.motion === 'mine');
+  }
+
   towerAt(c: number, r: number): Tower | undefined {
     const id = this.tileAt(c, r);
     return id > 0 ? this.towerById.get(id) : undefined;
@@ -807,7 +816,25 @@ export class World {
       towers: this.towers.map((t) => ({
         def: t.def.id, c: t.c, r: t.r, tier: t.tier, level: t.level, cards: t.cards.map((c) => ({ ...c })), targetMode: t.targetMode, invested: t.invested,
         socketGold: t.socketGold, kills: t.kills, dmgTotal: t.dmgTotal, vars: t.rt ? [...t.rt.vars.entries()] : [],
+        st: {
+          id: t.id, angle: t.angle, cooldown: t.cooldown, attackCount: t.attackCount, lastAttackTick: t.lastAttackTick, barrel: t.barrel,
+          droneTimer: t.droneTimer, beamRamp: t.beamRamp, beamTimer: t.beamTimer, beamTargets: [...t.beamTargets], recoil: t.recoil,
+          lastAttackEventTick: t.lastAttackEventTick, liveSpawns: t.liveSpawns, disabledUntil: t.disabledUntil, placedTick: t.placedTick, drones: [...t.drones],
+          mods: t.mods.map((m) => ({ ...m })),
+          rules: t.rt ? t.rt.rules.map((r) => [r.cooldownUntil, r.nthCounter, r.attackCounter, r.timer, r.idleFired ? 1 : 0, r.lastSpawnTick]) : [],
+        },
       })),
+      clock: {
+        time: this.time, beatCount: this.beatCount, beatTimer: this.beatTimer, alternate: this.alternate,
+        lastWaveStartTick: this.lastWaveStartTick, livesRestoredWave: this.livesRestoredWave,
+      },
+      drones: this.drones.filter((d) => d.alive).map((d) => ({ ...d })),
+      recentDeaths: this.recentDeaths.map((d) => ({ ...d })),
+      // Orbiting shots and mines outlive the wave; their templates are found again through the tower.
+      lingering: this.projectiles.filter((p) => p.alive && (p.motion === 'orbit' || p.motion === 'mine') && p.tpl).map((p) => {
+        const { tpl, rt, look, ...rest } = p;
+        return { ...rest, hit: [...p.hit], tplId: tpl!.id, rtOf: this.towers.find((t) => t.rt === rt)?.id ?? 0 };
+      }),
     };
   }
 
@@ -828,6 +855,10 @@ export class World {
     this.phase = s.phase === 'running' ? 'running' : s.phase;
     this.countdown = s.countdown ?? (this.waveN > 0 ? RULES.countdown : null);
     if (this.waveN === 0) this.phase = 'build';
+    if (s.clock) Object.assign(this, s.clock);
+    this.drones = (s.drones ?? []).map((d) => ({ ...d }));
+    this.recentDeaths = (s.recentDeaths ?? []).map((d) => ({ ...d }));
+    let placed = 0;
     for (const ts of s.towers) {
       const def = TOWER_BY_ID.get(ts.def);
       if (!def) continue;
@@ -836,6 +867,14 @@ export class World {
       const t = this.place(ts.def, ts.c, ts.r);
       this.gold = g;
       if (typeof t === 'string') continue;
+      placed++;
+      if (ts.st && !this.towerById.has(ts.st.id)) {
+        // Keep the tower's id, so whatever refers to it (and the ids handed out next) match the saved game.
+        this.towerById.delete(t.id);
+        t.id = ts.st.id;
+        this.towerById.set(t.id, t);
+        this.grid[t.r * this.cols + t.c] = t.id;
+      }
       t.tier = ts.tier as 1 | 2 | 3;
       t.level = Math.max(1, Math.min(LEVELS.max, ts.level ?? 1));
       t.targetMode = ts.targetMode;
@@ -849,6 +888,31 @@ export class World {
       t.sockets = t.cards.map((c) => c.power);
       this.refreshSpec(t);
       if (t.rt) for (const [k, v] of ts.vars) if (t.rt.vars.has(k)) t.rt.vars.set(k, v);
+      const st = ts.st;
+      if (st) {
+        Object.assign(t, {
+          angle: st.angle, cooldown: st.cooldown, attackCount: st.attackCount, lastAttackTick: st.lastAttackTick, barrel: st.barrel,
+          droneTimer: st.droneTimer, beamRamp: st.beamRamp, beamTimer: st.beamTimer ?? 0, beamTargets: [...(st.beamTargets ?? [])], recoil: st.recoil ?? 0,
+          lastAttackEventTick: st.lastAttackEventTick ?? -9999, liveSpawns: st.liveSpawns ?? 0, disabledUntil: st.disabledUntil, placedTick: st.placedTick,
+          drones: [...st.drones], mods: st.mods.map((m) => ({ ...m })),
+        });
+        if (t.rt && t.rt.rules.length === st.rules.length) {
+          t.rt.rules.forEach((r, i) => {
+            [r.cooldownUntil, r.nthCounter, r.attackCounter, r.timer] = st.rules[i];
+            r.idleFired = st.rules[i][4] === 1;
+            r.lastSpawnTick = st.rules[i][5];
+          });
+        }
+      }
+    }
+    // Placing handed out ids the saved towers already have: take them back.
+    if (s.towers.every((ts) => ts.st) && this.nextId === s.nextId + placed) this.nextId = s.nextId;
+    this.projectiles = [];
+    for (const l of s.lingering ?? []) {
+      const { tplId, rtOf, ...rest } = l;
+      const rt = this.towerById.get(rtOf)?.rt;
+      const tpl = rt?.projectiles.get(tplId);
+      if (rt && tpl) this.projectiles.push({ ...rest, hit: [...rest.hit], tpl, rt, look: tpl.look });
     }
   }
 }
@@ -874,7 +938,18 @@ export interface WorldSave {
   towers: {
     def: string; c: number; r: number; tier: number; level?: number; cards: Card[]; targetMode: TargetMode; invested: number;
     socketGold: number; kills: number; dmgTotal: number; vars: [string, number][];
+    /** Moment-to-moment state (aim, reload, rule timers), so a restored game plays on exactly. Older saves lack it. */
+    st?: {
+      id: number; angle: number; cooldown: number; attackCount: number; lastAttackTick: number; barrel: number; droneTimer: number;
+      beamRamp: number; beamTimer?: number; beamTargets?: number[]; recoil?: number; lastAttackEventTick?: number; liveSpawns?: number;
+      disabledUntil: number; placedTick: number; drones: number[]; mods: TempMod[];
+      rules: [number, number, number, number, number, number][];
+    };
   }[];
+  lingering?: (Omit<Projectile, 'tpl' | 'rt' | 'look'> & { tplId: string; rtOf: number })[];
+  clock?: Pick<World, 'time' | 'beatCount' | 'beatTimer' | 'alternate' | 'lastWaveStartTick' | 'livesRestoredWave'>;
+  drones?: Drone[];
+  recentDeaths?: RecentDeath[];
 }
 
 export { towerCostToTier };

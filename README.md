@@ -53,6 +53,8 @@ whole forge pipeline. A local Ollama works too: `OLLAMA_HOST=http://localhost:11
 | `npm run typecheck` | `tsc` over everything (install `typescript` and `@types/node` for this) |
 | `npm run build` | Static build of the game into `dist/` (for GitHub Pages; set `API_BASE`) |
 | `npm run bot -- all normal 2` | Headless playtest bot over the campaign, for tuning difficulty |
+| `npm run strategist -- all hard 1` | The Strategist, a planning bot that looks ahead with copies of the game |
+| `npm run record -- run.json` | Video of a game the Strategist recorded (`--record run.json`), played in the real client |
 | `npm run pregen -- 25` | Pre-forge 25 random fusions (or pass `v1:tower:a>b` keys) |
 
 `tools/screenshot.ts` drives the game in headless Chromium (needs `playwright`) and saves
@@ -75,7 +77,7 @@ src/balance/    benchmark scenarios and the potency solver
 src/server/     HTTP server, fusion stores (SQLite / Firestore), the forge (prompt, Ollama client, pipeline)
 src/client/     Canvas renderer, UI, tutorial, audio, local storage, forge client
 tests/          node:test suites
-tools/          playtest bot, pregen, screenshots
+tools/          playtest bot, Strategist, game recorder, pregen, screenshots
 ```
 
 ## Docs

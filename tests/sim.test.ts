@@ -62,6 +62,38 @@ test('a snapshot restores into an identical game', () => {
   assert.equal(digest(b), digest(a));
 });
 
+test('a settled game saved to JSON plays on exactly: aim, reloads, rule timers, drones and mines', () => {
+  // Two roads (spawns alternate between them), a hive's drones, spore mines that outlive the wave.
+  const map = MAPS.find((m) => m.paths.length > 1)!;
+  const settle = (w: World) => {
+    for (let i = 0; !w.quiescent() && w.phase === 'running' && i < 60 * 300; i++) w.step();
+    for (let i = 0; !w.settled() && i < 600; i++) w.step();
+  };
+  const a = new World({ map, difficulty: 'hard', seed: 17, startGold: 1e6, packs: false });
+  const spots: [number, number][] = [];
+  for (let r = 0; r < a.rows; r++) for (let c = 0; c < a.cols; c++) if (a.canBuild(c, r)) spots.push([c, r]);
+  const kit: [string, string[]][] = [['bolt', ['spore']], ['hive', ['storm', 'orbit']], ['prism', ['metronome']], ['cannon', ['ember', 'echo', 'venom']], ['mortar', []]];
+  kit.forEach(([id, powers], i) => {
+    const [c, r] = spots[Math.floor(((i + 0.5) * spots.length) / kit.length)];
+    const t = a.place(id, c, r);
+    if (typeof t === 'string') throw new Error(t);
+    a.upgrade(t.id);
+    a.upgrade(t.id);
+    for (const p of powers) a.socket(t.id, a.giveCard(p, 2).uid);
+  });
+  for (let n = 0; n < 3; n++) { a.callWave(); settle(a); }
+  const b = new World({ map, difficulty: 'hard', seed: a.seed });
+  b.restore(JSON.parse(JSON.stringify(a.snapshot())));
+  for (let n = 0; n < 3; n++) {
+    a.callWave();
+    b.callWave();
+    settle(a);
+    settle(b);
+    assert.equal(digest(b), digest(a), `wave ${a.waveN}`);
+    assert.deepEqual(b.towers.map((t) => Math.round(t.dmgTotal)), a.towers.map((t) => Math.round(t.dmgTotal)), `wave ${a.waveN}`);
+  }
+});
+
 test('losing your last life on the final wave is a defeat, not a victory', () => {
   const w = new World({ map: meadow, difficulty: 'normal', seed: 3, waves: [{ n: 1, groups: [{ enemy: 'p3', count: 1, interval: 1, delay: 0, path: 0 }], hpMult: 1, boss: null, reward: 0, carapace: null, mutators: [] }] });
   w.lives = 1;

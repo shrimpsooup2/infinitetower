@@ -14,6 +14,8 @@
     "typecheck": "tsc -p tsconfig.json",
     "build": "node --disable-warning=ExperimentalWarning tools/build.ts",
     "bot": "node --disable-warning=ExperimentalWarning tools/bot.ts",
+    "strategist": "node --disable-warning=ExperimentalWarning tools/strategist.ts",
+    "record": "node --disable-warning=ExperimentalWarning tools/record.ts",
     "pregen": "node --env-file-if-exists=.env --disable-warning=ExperimentalWarning tools/pregen.ts"
   },
   "devDependencies": {

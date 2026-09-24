@@ -46,7 +46,8 @@ src/
                   render/ (renderer, fx, draw, scenery, tower-art, enemy-art, geometry, pack-art),
                   ui/dom
 tests/            effects, sim, maps, levels, forge, deploy, store (node:test)
-tools/            bot (playtest), pregen (seed the database), screenshot (Playwright)
+tools/            bot (playtest), strategist (planning bot), record (video of a game),
+                  pregen (seed the database), screenshot (Playwright)
 ```
 
 ## 3. Key design decisions
@@ -58,6 +59,10 @@ tools/            bot (playtest), pregen (seed the database), screenshot (Playwr
     renderer never changes game state.
   - Together these make benchmarks reproducible, runs saveable (snapshot / restore between
     waves), and the bot and tests trustworthy.
+  - A snapshot keeps the moment-to-moment state too: tower ids, aim, reloads, rule timers,
+    drones, the road-alternation counter, and orbiting shots and mines. Once the last shots
+    of a wave have landed (`World.settled()`), a restored game plays on exactly like the
+    original. The Strategist's look-ahead depends on this.
 - **Commands are World methods** (`place`, `upgrade`, `socket`, `callWave`, `openPack`, ...).
   They return an error string or a result. The UI, the bot and the tests all drive the game
   the same way.
@@ -130,6 +135,23 @@ tools/            bot (playtest), pregen (seed the database), screenshot (Playwr
   (waves reached, lives, towers by tier, fusions, time). Set `BOT_TRACE=1` to also print lives
   per wave and the economy totals. It takes about 2 s per map. The bot also buys levels with
   spare gold once its towers are built out.
+- `npm run strategist -- all hard 1` runs the **Strategist**, a planning bot that shows how
+  far good play can get. The snapshot between waves is exact, so before each wave it plays
+  copies of the game:
+  - It lists candidate moves: each promising tower type on its best tile (the one whose range
+    covers the most road or air lane), tier upgrades, levels, and sockets for its best cards.
+  - It first plays the coming wave at its real HP. That copy is exactly what will happen, so
+    if the wave would leak, stopping that comes first.
+  - Otherwise it raises enemy HP until the defence starts to bend (×1.5 and up) and buys
+    margin there, so the defence holds for the waves after.
+  - Each step it makes the move that cuts the threat most per gold. The threat counts lives
+    lost, then how far shapes got down the road.
+  - It shops for packs when it has open sockets and nothing to put in them, and it calls every
+    wave at once for the early-call bonus.
+  - `--trace` prints its moves per wave and checks each prediction against what happened.
+  - `--record run.json` saves the game. `npm run record -- run.json` then replays it in the
+    real client in headless Chromium and saves a video (`.webm`), with a caption listing the
+    moves. It checks the replay in Node first, and runs 2 to 8 times faster than real time.
 - `tools/screenshot.ts` drives every screen in headless Chromium, including a gallery of every
   3D, 4D and boss shape, and reports page errors.
 
