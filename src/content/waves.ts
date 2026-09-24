@@ -15,9 +15,20 @@ import { hashString } from '../sim/math.ts';
 const ENDLESS_MUTATORS = ['shielded', 'swift', 'regen', 'armored', 'swarm'];
 
 /** Total enemy HP (before the wave HP multiplier and difficulty) a wave is built from. */
+/**
+ * How much the budget grows each wave, for waves 1-10, 11-20, ... 51-60 (endless
+ * keeps the last). tools/autobalance.ts tunes these: the Strategist, playing on
+ * Hard, should just be able to beat every map.
+ */
+export const GROWTH = [1.13, 1.13, 1.13, 1.13, 1.11, 1.11];
+
+/** Which entry of GROWTH wave `n` grows by. */
+export const growthBand = (n: number) => Math.min(GROWTH.length - 1, Math.floor((n - 1) / 10));
+
 export function waveBudget(n: number): number {
-  // 13% a wave through Solidspace, 11% in Hyperspace (the waves there were out of reach).
-  return 260 * Math.pow(1.13, Math.min(n, 40) - 1) * Math.pow(1.11, Math.max(0, n - 40));
+  let b = 260;
+  for (let k = 2; k <= n; k++) b *= GROWTH[growthBand(k)];
+  return b;
 }
 
 export const MOD_HP: Record<SpawnMod, number> = { swarm: 0.3, flying: 0.8, swift: 0.7, elite: 3, stealth: 0.9 };

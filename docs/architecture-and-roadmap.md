@@ -46,8 +46,9 @@ src/
                   render/ (renderer, fx, draw, scenery, tower-art, enemy-art, geometry, pack-art),
                   ui/dom
 tests/            effects, sim, maps, levels, forge, deploy, store (node:test)
-tools/            bot (playtest), strategist (planning bot), record (video of a game),
-                  pregen (seed the database), screenshot (Playwright)
+tools/            bot (playtest), strategist (planning bot), autobalance (tunes waves and
+                  bosses until the Strategist wins), record (video of a game), pregen (seed
+                  the database), screenshot (Playwright)
 ```
 
 ## 3. Key design decisions
@@ -175,6 +176,14 @@ tools/            bot (playtest), strategist (planning bot), record (video of a 
     top damage dealers in turn (`--no-panel` to hide it; `--size 1600x900` for more room).
     It checks the replay in Node first, and runs 2 to 8 times faster than real time
     (`--speed` to choose).
+- `npm run autobalance -- fork,twinrivers,nebula,horizon hard` eases the game until the
+  Strategist can beat it. Each map is played on the difficulty. After a loss, the tuner eases
+  what was lost by how close it was. On a boss wave that is the boss's HP and shield. On
+  any other wave it is the budget growth of that band of ten waves (`GROWTH` in
+  `src/content/waves.ts`), spread over the band so the curve stays smooth. The bot then goes
+  back to an exact save just before the first wave the change affects and plays on. Maps
+  run in parallel, and the easiest value any map needed is printed, ready to write into the
+  content.
 - `tools/screenshot.ts` drives every screen in headless Chromium, including a gallery of every
   3D, 4D and boss shape, and reports page errors.
 

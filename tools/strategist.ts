@@ -578,12 +578,19 @@ function recordCalls(w: World, log: [string, ...unknown[]][]): void {
   }
 }
 
+/**
+ * Eases the game after a loss at `wave`, where the defence would have held
+ * `hold` of that wave's HP. Returns the first wave the change affects (the
+ * game goes back to just before it), or null to stop balancing.
+ */
+export type Tuner = (loss: { map: MapDef; wave: number; hold: number }) => { from: number; note: string } | null;
+
 /** One line of play, from a start to victory or defeat. */
 interface Line { won: boolean; wave: number; lives: number; w: World; steps: Step[]; last: WorldSave | null }
 
 export async function play(
   mapId: string, diff: Diff, seed: number,
-  o: { trace?: boolean; record?: boolean; tries?: number; threads?: number } = {},
+  o: { trace?: boolean; record?: boolean; tries?: number; threads?: number; tune?: Tuner } = {},
 ): Promise<Result & { script?: Script }> {
   const t0 = Date.now();
   const map = MAP_BY_ID.get(mapId)!;
@@ -627,10 +634,41 @@ export async function play(
     return { won, wave: won ? w.totalWaves : w.waveN, lives: w.lives, w, steps, last };
   };
 
+  /** How close a loss was: the share of the killing wave's HP at which the defence would have held. */
+  const holdOf = async (snap: WorldSave) => {
+    let lo = 0, hi = 1;
+    for (let i = 0; i < 7; i++) {
+      const mid = (lo + hi) / 2;
+      if ((await probe1(ctx, { snap, move: null, stress: mid }))!.lives < snap.lives) lo = mid; else hi = mid;
+    }
+    return lo;
+  };
+  /** Go back to the latest checkpoint at or before wave `at` and play on with the current policy. */
+  const resume = async (at: number): Promise<Line | null> => {
+    const key = [...checkpoints.keys()].filter((n) => n <= at).sort((a, b) => b - a)[0];
+    if (key === undefined) return null;
+    const cp = checkpoints.get(key)!;
+    for (const n of [...checkpoints.keys()]) if (n > key) checkpoints.delete(n);
+    const w = new World({ map, difficulty: diff, seed, fx: false, autoStart: false });
+    w.restore(cp.save);
+    return run(w, line.steps.slice(0, cp.steps));
+  };
+
   const better = (a: Line, b: Line | null) => !b || (a.won && !b.won) || (a.won === b.won && (a.wave > b.wave || (a.wave === b.wave && a.lives > b.lives)));
   let line = await run(fresh, []);
   let best = line;
   let tries = 0;
+  // Balancing: after a loss the tuner eases the game where it was lost, and the
+  // bot goes back to just before the first wave that changed and plays on.
+  for (let tunes = 0; o.tune && !line.won && tunes < 60; tunes++) {
+    const hold = await holdOf(line.last!);
+    const t = o.tune({ map, wave: line.wave, hold });
+    if (!t) break;
+    if (trace) console.log(`  <- lost at wave ${line.wave} (held ${Math.round(hold * 100)}%): ${t.note}; back to wave ${t.from}`);
+    const next = await resume(t.from - 1);
+    if (!next) break;
+    line = best = next;
+  }
   // The search: after a loss, go back a few waves and play on with a policy not
   // yet tried from there (after a boss, preparing for it earlier comes first);
   // when every policy has been tried, go back further.
@@ -663,17 +701,7 @@ export async function play(
     if (better(line, best)) best = line;
   }
 
-  // How close a loss was: the enemy HP (x the difficulty's) at which the last defence would have held.
-  let hold = 1;
-  if (!best.won && best.last) {
-    const snap = best.last;
-    let lo = 0, hi = 1;
-    for (let i = 0; i < 7; i++) {
-      const mid = (lo + hi) / 2;
-      if ((await probe1(ctx, { snap, move: null, stress: mid })).lives < snap.lives) lo = mid; else hi = mid;
-    }
-    hold = lo;
-  }
+  const hold = !best.won && best.last ? await holdOf(best.last) : 1;
   ctx.pool?.close();
   const w = best.w;
   const tiers = [1, 2, 3].map((k) => w.towers.filter((t) => t.tier === k).length).join('/');
