@@ -125,11 +125,19 @@ const STEPS: Step[] = [
     next: 'Next',
   },
   {
+    text: (t) => (t.host.selected()
+      ? 'Level it up (or press L). Levels add damage, and the green numbers in a fusion grow too. A higher level makes that tower\'s next socket and upgrade cost more.'
+      : 'Select your Bolt again.'),
+    anchor: (t) => (t.host.selected() ? '.side .lvbtn' : towerTile(t)), side: 'left',
+    enter: (t) => { const x = tower(t); if (x) topUp(t, t.w.levelCost(x) ?? 0); },
+    done: (t) => t.w.towers.some((x) => x.level >= 2),
+  },
+  {
     text: () => 'More packs arrive every 3 waves and after each boss, and the Shop sells them for gold. Right-click a card you do not need to scrap it for gold.',
     anchor: () => '.shopbtn', side: 'above', next: 'Next',
   },
   {
-    text: () => 'Shortcuts: 1-0 build · Space sends the wave · U upgrades · S sells (press twice) · T changes targeting · F changes speed · Backspace removes the last card · Esc cancels or pauses.',
+    text: () => 'Shortcuts: 1-0 build · Space sends the wave · U upgrades · L levels up · S sells (press twice) · T changes targeting · F changes speed · Backspace removes the last card · Esc cancels or pauses.',
     next: 'Next',
   },
   {

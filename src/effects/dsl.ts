@@ -427,7 +427,7 @@ export const RuleS = S.obj({
 
 export const SpecS = S.obj<FusionSpec>({
   dsl: S.opt(S.lit(1 as const)),
-  concept: S.str(160),
+  concept: S.str(220),
   name: S.str(32),
   flavor: S.str(80),
   stats: S.opt(StatBlockS),
@@ -440,6 +440,7 @@ export const SpecS = S.obj<FusionSpec>({
   rules: S.arr(RuleS, 1, LIMITS.rules),
   visual: S.opt(VisualS),
   sound: S.opt(S.obj({ preset: S.enm(SOUND_PRESETS), pitch: S.opt(S.num(0.5, 2)) })),
+  scaling: S.opt(S.arr(S.obj({ path: S.str(96), per: S.num(-1000, 1000) }), 0, 12)),
 });
 
 let cachedJson: Record<string, unknown> | null = null;

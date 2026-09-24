@@ -309,6 +309,8 @@ export interface Tower {
   x: number;
   y: number;
   tier: 1 | 2 | 3;
+  /** Bought with gold, separate from the tier (1..LEVELS.max). */
+  level: number;
   angle: number;
   targetMode: TargetMode;
   targetId: number;
@@ -317,6 +319,8 @@ export interface Tower {
   cards: Card[];
   specKey: string;
   specState: SpecState;
+  /** The installed spec before levels are applied (rt.spec is the levelled copy). */
+  specSrc: { spec: FusionSpec; potency: number } | null;
   rt: SpecRuntime | null;
   stats: TowerStats;
   invested: number;

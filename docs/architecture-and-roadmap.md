@@ -29,8 +29,9 @@ src/
                   drones), combat, path, spatial hash, seeded RNG (sfc32)
   effects/        types, schema builder (validation + JSON Schema), dsl (limits, schemas,
                   cheat sheet), validate, runtime (rule dispatch, actions, values, selectors),
-                  vfxlib (41 recipes), describe (spec -> English), lint, combiner (offline
-                  fusions), keys
+                  vfxlib (41 recipes), describe (spec -> English), level (numbers that grow
+                  with tower level), concept (live numbers in the concept), lint, combiner
+                  (offline fusions), keys
   content/        towers, powers (40 hand-made specs), enemies (2D / 3D / 4D and bosses),
                   waves (budget generator), maps (15 + tutorial), packs, rarity, rules
                   (difficulties, economy), twists, colours
@@ -43,7 +44,7 @@ src/
                   audio,
                   render/ (renderer, fx, draw, scenery, tower-art, enemy-art, geometry, pack-art),
                   ui/dom
-tests/            effects, sim, maps, forge, deploy, store (node:test)
+tests/            effects, sim, maps, levels, forge, deploy, store (node:test)
 tools/            bot (playtest), pregen (seed the database), screenshot (Playwright)
 ```
 
@@ -92,7 +93,7 @@ tools/            bot (playtest), pregen (seed the database), screenshot (Playwr
 
 ## 5. Testing and tuning
 
-- `npm test` runs 33 cases:
+- `npm test` runs 42 cases:
   - every authored spec validates;
   - the validator survives 2,000 random fuzz specs;
   - 300 random offline fusions validate;
@@ -103,6 +104,9 @@ tools/            bot (playtest), pregen (seed the database), screenshot (Playwr
   - wave and pack rules hold;
   - every map is well formed (straight roads inside the grid, obstacles off the road, a known
     theme) and plays its first wave;
+  - tower levels: costs grow with level, tier and cards; levels raise socket and tier prices;
+    level marks are lifted, checked, applied, clamped and saved; concept numbers bind to the
+    spec and render at the tower's level and potency; the rules text labels growing numbers;
   - polytope vertex, edge and face counts (and Euler's formula) are right;
   - the forge works end to end with the mock model, including numbering, World Firsts,
     lineage, the provisional fallback and the HTTP API;
@@ -113,7 +117,8 @@ tools/            bot (playtest), pregen (seed the database), screenshot (Playwr
     forge runs end to end on it.
 - `npm run bot -- all normal 2` plays the campaign headlessly and prints the result per map
   (waves reached, lives, towers by tier, fusions, time). Set `BOT_TRACE=1` to also print lives
-  per wave and the economy totals. It takes about 2 s per map.
+  per wave and the economy totals. It takes about 2 s per map. The bot also buys levels with
+  spare gold once its towers are built out.
 - `tools/screenshot.ts` drives every screen in headless Chromium, including a gallery of every
   3D, 4D and boss shape, and reports page errors.
 
@@ -148,6 +153,7 @@ Built:
 - enemies across 2D, 3D and 4D, 6 bosses;
 - a 15-map campaign in 9 visual themes, 4 difficulties, endless mode;
 - card packs, rarities and exclusive powers;
+- tower levels, with fusion numbers the Forge marks as growing, and concepts with live numbers;
 - the forge with Ollama, validation, lint, novelty, balance by simulation and lineage;
 - discovery numbers, World Firsts, the local Codex;
 - the tutorial, tests, playtest bot and pregen tool.

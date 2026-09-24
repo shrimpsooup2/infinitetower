@@ -387,6 +387,12 @@ export interface StatBlock {
 export const ATTACK_MOTIONS = ['straight', 'homing', 'boomerang', 'spiral', 'sine'] as const;
 export type AttackMotion = (typeof ATTACK_MOTIONS)[number];
 
+/** A number that grows with the tower's level: its path in the spec and its step per level. */
+export interface LevelScale {
+  path: string;
+  per: number;
+}
+
 export interface FusionSpec {
   dsl: 1;
   concept: string;
@@ -402,4 +408,6 @@ export interface FusionSpec {
   rules: Rule[];
   visual?: Visual;
   sound?: Sound;
+  /** Numbers that grow per tower level (absent = written before levels existed). */
+  scaling?: LevelScale[];
 }

@@ -17,17 +17,22 @@ export interface RarityDef {
    */
   socketMult: number;
   /**
-   * Socket prices rise as a run goes on and income grows: +this fraction of the
-   * price per wave. Rarer cards climb faster, so hoarding them gets expensive.
+   * Socket prices rise a little as a run goes on and income grows: +this
+   * fraction of the price per wave. Rarer cards climb faster.
    */
   socketGrowth: number;
+  /**
+   * Most of the climb comes from the tower instead: +this fraction of the price
+   * per level of the tower it goes into, steeper for rarer cards.
+   */
+  levelGrowth: number;
 }
 
 export const RARITIES: RarityDef[] = [
-  { id: 'common', name: 'Common', color: '#b8b8b8', mult: 1, socketMult: 1, socketGrowth: 0.02 },
-  { id: 'rare', name: 'Rare', color: '#00b2e1', mult: 1.2, socketMult: 2, socketGrowth: 0.03 },
-  { id: 'epic', name: 'Epic', color: '#bf7ff5', mult: 1.45, socketMult: 3, socketGrowth: 0.045 },
-  { id: 'legendary', name: 'Legendary', color: '#ffc629', mult: 1.75, socketMult: 5, socketGrowth: 0.065 },
+  { id: 'common', name: 'Common', color: '#b8b8b8', mult: 1, socketMult: 1, socketGrowth: 0.01, levelGrowth: 0.1 },
+  { id: 'rare', name: 'Rare', color: '#00b2e1', mult: 1.2, socketMult: 2, socketGrowth: 0.015, levelGrowth: 0.14 },
+  { id: 'epic', name: 'Epic', color: '#bf7ff5', mult: 1.45, socketMult: 3, socketGrowth: 0.022, levelGrowth: 0.19 },
+  { id: 'legendary', name: 'Legendary', color: '#ffc629', mult: 1.75, socketMult: 5, socketGrowth: 0.032, levelGrowth: 0.26 },
 ];
 
 /**

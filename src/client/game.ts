@@ -13,6 +13,7 @@ import { drawPackArt } from './render/pack-art.ts';
 import type { PackInst } from '../sim/world.ts';
 import { waveSummary } from '../content/waves.ts';
 import { describeSpec } from '../effects/describe.ts';
+import { conceptEl } from './ui/concept.ts';
 import { fusionKey } from '../effects/keys.ts';
 import { Renderer, type RenderOpts } from './render/renderer.ts';
 import { towerIcon, TOWER_TINT } from './render/tower-art.ts';
@@ -261,6 +262,9 @@ export class Game {
       case 'u':
         if (t) this.upgrade(t);
         break;
+      case 'l':
+        if (t) this.levelUp(t);
+        break;
       case 's':
         if (t) this.sell(t);
         break;
@@ -309,6 +313,14 @@ export class Game {
       this.toast(err, 'bad');
       this.d.audio.play('error');
     } else this.d.audio.play('upgrade');
+  }
+
+  private levelUp(t: Tower): void {
+    const err = this.w.levelUp(t.id);
+    if (err) {
+      this.toast(err, 'bad');
+      this.d.audio.play('error');
+    } else this.d.audio.play('upgrade', 1.25);
   }
 
   private sell(t: Tower): void {
@@ -627,7 +639,7 @@ export class Game {
 
   private refreshHand(): void {
     const w = this.w;
-    const key = `${w.cards.map((c) => c.uid).join(',')}:${this.armed}:${this.selected?.id}:${this.selected?.sockets.length}:${this.selected?.tier}:${Math.floor(w.gold / 10)}`;
+    const key = `${w.cards.map((c) => c.uid).join(',')}:${this.armed}:${this.selected?.id}:${this.selected?.sockets.length}:${this.selected?.tier}:${this.selected?.level}:${Math.floor(w.gold / 10)}`;
     if (key === this.handKey) return;
     this.handKey = key;
     if (!w.cards.length) {
@@ -708,7 +720,7 @@ export class Game {
     if (!t && this.selected) this.selected = null;
     const w = this.w;
     const key = t
-      ? `t${t.id}:${t.tier}:${t.specKey}:${t.specState}:${t.targetMode}:${Math.floor(w.gold / 5)}:${this.hoverCard?.uid}:${Math.floor(t.dmgTotal / 50)}:${t.kills}:${Math.round(t.stats.range * 10)}:${Math.round(t.stats.rate * 100)}:${this.d.forge.stages.get(t.specKey)}`
+      ? `t${t.id}:${t.tier}:${t.level}:${t.specKey}:${t.specState}:${t.targetMode}:${Math.floor(w.gold / 5)}:${this.hoverCard?.uid}:${Math.floor(t.dmgTotal / 50)}:${t.kills}:${Math.round(t.stats.range * 10)}:${Math.round(t.stats.rate * 100)}:${this.d.forge.stages.get(t.specKey)}`
       : `p${this.placing?.id}:${this.d.codex.size}`;
     if (key === this.sideKey) return;
     this.sideKey = key;
@@ -722,7 +734,7 @@ export class Game {
       towerIcon(t.def.id, t.tier, 46, colorsFor(t.sockets), t.sockets.length),
       h('div', { class: 'col', style: { gap: '2px' } },
         h('h2', null, `${t.def.name} ${'★'.repeat(t.tier)}${'☆'.repeat(3 - t.tier)}`),
-        h('span', { class: 'small o' }, t.def.role)),
+        h('span', { class: 'row' }, h('span', { class: 'badge lvbadge' }, `Level ${t.level}`), h('span', { class: 'small o' }, t.def.role))),
     );
     // Fusion / power info.
     const info: (HTMLElement | null)[] = [];
@@ -734,7 +746,7 @@ export class Game {
       info.push(
         h('div', { class: 'fusion-name', style: { color: rt.colors.base } }, title),
         this.statusBadge(t) ?? h('span', { class: 'badge' }, 'Single power'),
-        h('div', { class: 'concept' }, rt.spec.concept),
+        conceptEl(t.specSrc?.spec ?? rt.spec, { level: t.level, potency: rt.potency, dmgBase: t.stats.damage }),
         rt.spec.flavor ? h('div', { class: 'flavor' }, rt.spec.flavor) : null,
         this.rulesDetails(lines),
       );
@@ -770,7 +782,7 @@ export class Game {
         h('h3', null, `+ ${POWER_BY_ID.get(hc.power)!.name} as ${SOCKET_ROLE[t.sockets.length]}${price !== null ? ` · ${price}g` : ''}`),
         block ? h('div', { class: 'small o', style: { color: '#ff8e8e' } }, block) : null,
         t.sockets.length === 0 ? h('div', { class: 'info-card' }, POWER_BY_ID.get(hc.power)!.blurb)
-          : known ? h('div', { class: 'col' }, h('div', { class: 'fusion-name' }, known.name), h('div', { class: 'concept' }, known.concept))
+          : known ? h('div', { class: 'col' }, h('div', { class: 'fusion-name' }, known.name), conceptEl(known.spec, { level: t.level, potency: known.potency, dmgBase: t.stats.damage }, known.concept))
             : h('div', { class: 'info-card' }, '???'),
       );
     }
@@ -787,8 +799,10 @@ export class Game {
     const targets = t.def.chassis === 'aura' || t.def.chassis === 'drones' ? null : h('div', { class: 'targets' },
       ...TARGET_MODES.map((m: TargetMode) => h('button', { class: `btn grey ${t.targetMode === m ? 'active' : ''}`, on: { click: () => { this.w.setTargetMode(t.id, m); this.sideKey = ''; } } }, m)));
     const upCost = w.upgradeCost(t);
+    const lvCost = w.levelCost(t);
     const actions = h('div', { class: 'actions' },
       h('button', { class: 'btn blue', disabled: upCost === null || w.gold < upCost, on: { click: () => this.upgrade(t) } }, upCost === null ? 'Max tier' : `Upgrade ${upCost}g [U]`),
+      h('button', { class: 'btn green lvbtn', disabled: lvCost === null || w.gold < lvCost, on: { click: () => this.levelUp(t) } }, lvCost === null ? 'Max level' : `Level ${lvCost}g [L]`),
       h('button', { class: 'btn red', on: { click: () => this.sell(t) } }, `Sell ${w.sellValue(t)}g [S]`),
     );
     mount(this.el.side,

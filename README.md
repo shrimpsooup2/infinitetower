@@ -18,6 +18,9 @@ number. From then on, every player who makes that combination gets the same fusi
 - **Card packs with rarities.** Powers come as Common, Rare, Epic and Legendary cards, and you
   keep one card from each pack. Rarer cards are stronger, and the most exotic powers only come
   at high rarity.
+- **Tower levels.** Level a tower up for more damage, and the numbers its fusion marks as
+  growing grow too; each fusion's explanation shows its real numbers at the tower's level.
+  Levels make that tower's next cards and tier cost more, so you choose what to grow first.
 - **Shapes that climb through dimensions.** The first 20 waves are 2D polygons (triangle to
   tetradecagon), then 3D polyhedra rendered like early-2000s CG, then 4D polytopes that phase in
   and out of reach.

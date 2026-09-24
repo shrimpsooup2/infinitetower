@@ -26,6 +26,7 @@ interface Result {
   tiers: string;
   hand: number;
   ms: number;
+  levels: number;
 }
 
 /** Buildable tiles ranked by how much path they cover within 3 tiles. */
@@ -61,11 +62,16 @@ function act(w: World, tiles: [number, number][], state: { next: number }): void
     for (const c of spare) w.scrapCard(c.uid);
   }
   // Socket the best cards into towers with open sockets, strongest towers first.
+  // Past the base socket, keep enough gold for the next tower it still wants.
   const byTier = [...w.towers].sort((a, b) => b.tier - a.tier || b.dmgTotal - a.dmgTotal);
+  const wantTowers = Math.min(tiles.length, 3 + Math.floor(w.waveN / 3));
+  const reserve = w.towers.length < wantTowers ? TOWER_BY_ID.get(ROTATION[state.next % ROTATION.length])!.cost : 0;
   for (const t of byTier) {
     while (w.cards.length && t.sockets.length < t.tier) {
       // The rarest card it can afford right now (rarer cards cost more to socket).
-      const card = [...w.cards].sort((a, b) => b.rarity - a.rarity).find((c) => !w.socketBlocker(t, c.rarity));
+      const keep = t.sockets.length ? reserve : 0;
+      const card = [...w.cards].sort((a, b) => b.rarity - a.rarity)
+        .find((c) => !w.socketBlocker(t, c.rarity) && w.gold - w.socketCost(t, c.rarity)! >= keep);
       if (!card || w.socket(t.id, card.uid)) break;
     }
   }
@@ -88,6 +94,20 @@ function act(w: World, tiles: [number, number][], state: { next: number }): void
     } else if (cheapestUp && w.gold >= cheapestUp.cost) {
       w.upgrade(cheapestUp.t.id);
     } else break;
+  }
+  // Spare gold goes into levels once the towers are built out: the busiest
+  // towers first, cheapest level first.
+  for (let guard = 0; guard < 10; guard++) {
+    const avgTier = w.towers.reduce((a, t) => a + t.tier, 0) / Math.max(1, w.towers.length);
+    const want = Math.min(tiles.length, 3 + Math.floor(w.waveN / 3));
+    const upgradesLeft = w.towers.some((t) => t.tier < 3);
+    if (upgradesLeft && !(w.towers.length >= want && avgTier >= 2.4)) break;
+    const pick = [...w.towers].sort((a, b) => b.dmgTotal - a.dmgTotal).slice(0, 4)
+      .map((t) => ({ t, cost: w.levelCost(t) }))
+      .filter((x): x is { t: Tower; cost: number } => x.cost !== null)
+      .sort((a, b) => a.cost - b.cost)[0];
+    if (!pick || w.gold < pick.cost) break;
+    w.levelUp(pick.t.id);
   }
 }
 
@@ -119,6 +139,7 @@ export function playMap(map: MapDef, difficulty: DifficultyDef['id'], seed: numb
     map: map.id, seed, won: w.phase === 'victory', wave: w.phase === 'victory' ? w.totalWaves : w.waveN, lives: w.lives,
     towers: w.towers.length, fused: w.towers.filter((t) => t.sockets.length >= 2).length,
     tiers: [1, 2, 3].map((k) => w.towers.filter((t) => t.tier === k).length).join('/'), hand: w.cards.length, ms: Date.now() - t0,
+    levels: w.towers.reduce((a, t) => a + t.level - 1, 0),
   };
 }
 
@@ -130,12 +151,12 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     process.exit(1);
   }
   const seeds = Math.max(1, Number(seedsArg) || 1);
-  console.log(`map          seed  result        lives towers t1/t2/t3 fused hand   time`);
+  console.log(`map          seed  result        lives towers t1/t2/t3 fused lvls hand   time`);
   for (const m of maps) {
     for (let s = 1; s <= seeds; s++) {
       const r = playMap(m, diff as DifficultyDef['id'], s * 7919);
       const res = r.won ? `WON ${r.wave}/${m.waves}` : `lost at ${r.wave}/${m.waves}`;
-      console.log(`${r.map.padEnd(12)} ${String(s).padStart(4)}  ${res.padEnd(13)} ${String(r.lives).padStart(5)} ${String(r.towers).padStart(6)} ${r.tiers.padStart(8)} ${String(r.fused).padStart(5)} ${String(r.hand).padStart(4)} ${(r.ms / 1000).toFixed(1).padStart(6)}s`);
+      console.log(`${r.map.padEnd(12)} ${String(s).padStart(4)}  ${res.padEnd(13)} ${String(r.lives).padStart(5)} ${String(r.towers).padStart(6)} ${r.tiers.padStart(8)} ${String(r.fused).padStart(5)} ${String(r.levels).padStart(4)} ${String(r.hand).padStart(4)} ${(r.ms / 1000).toFixed(1).padStart(6)}s`);
     }
   }
 }

@@ -3,6 +3,8 @@
 // target have one). Errors are phrased so they can be fed back to the LLM.
 
 import { SpecS, LIMITS, TARGETLESS_TRIGGERS } from './dsl.ts';
+import { checkScaling, extractLevelMarks } from './level.ts';
+import { bindConcept } from './concept.ts';
 import { BUILTIN_VFX } from './vfxlib.ts';
 import type { Issue } from './schema.ts';
 import {
@@ -125,15 +127,26 @@ function scanActions(actions: Action[] | undefined, path: string, refs: Refs, er
   });
 }
 
-/** Parse + semantically validate untrusted spec JSON. */
+/**
+ * Parse + semantically validate untrusted spec JSON. Level marks
+ * ({"lvl": base, "per": step}) are lifted into `scaling`, and every number the
+ * concept quotes in braces must exist in the spec.
+ */
 export function validateSpec(raw: unknown): ValidationResult {
   const issues: Issue[] = [];
-  const parsed = SpecS.parse(raw, 'spec', issues);
+  const lifted = extractLevelMarks(raw);
+  const parsed = SpecS.parse(lifted.raw, 'spec', issues);
   const errors = issues.filter((i) => i.level === 'error').map((i) => `${i.path}: ${i.msg}`);
   const warnings = issues.filter((i) => i.level === 'warn').map((i) => `${i.path}: ${i.msg}`);
   if (!parsed) return { ok: false, spec: null, errors, warnings };
 
   const spec: FusionSpec = { ...parsed, dsl: 1 };
+  if (parsed.scaling || lifted.marks.length) {
+    const sc = checkScaling(spec, [...(parsed.scaling ?? []), ...lifted.marks]);
+    spec.scaling = sc.kept;
+    warnings.push(...sc.warnings);
+  }
+  errors.push(...bindConcept(spec).errors);
   const refs: Refs = { statuses: new Map(), projectiles: new Map(), zones: new Map(), vars: new Map(), vfx: new Map() };
   const noteVfx = (id: string | undefined, where: string) => {
     if (id && !refs.vfx.has(id)) refs.vfx.set(id, where);

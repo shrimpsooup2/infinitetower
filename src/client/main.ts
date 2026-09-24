@@ -12,6 +12,8 @@ import { POWER_BY_ID } from '../content/powers.ts';
 import { ENEMIES } from '../content/enemies.ts';
 import { TOTAL_FUSIONS } from '../effects/keys.ts';
 import { describeSpec } from '../effects/describe.ts';
+import { conceptEl } from './ui/concept.ts';
+import { stripTokens } from '../effects/concept.ts';
 import { PAL } from '../content/colors.ts';
 import { drawEnemyBody } from './render/enemy-art.ts';
 import { towerIcon } from './render/tower-art.ts';
@@ -266,7 +268,7 @@ class App {
     const grid = h('div', { class: 'codex' });
     const renderGrid = () => {
       const list = this.codex.all().filter((e) => (!filterTower || e.tower === filterTower) &&
-        (!q || `${e.name} ${e.powers.join(' ')} ${e.concept}`.toLowerCase().includes(q)));
+        (!q || `${e.name} ${e.powers.join(' ')} ${stripTokens(e.concept)}`.toLowerCase().includes(q)));
       if (!list.length) {
         mount(grid, h('div', { class: 'stat-line' }, this.codex.size ? 'No fusions match.' : 'No fusions yet.'));
         return;
@@ -287,7 +289,7 @@ class App {
             e.worldFirst ? h('span', { class: 'badge red' }, 'WORLD FIRST') : null,
             e.discoveredAt ? h('span', { class: 'badge' }, fmtDate(e.discoveredAt)) : null,
           ),
-          h('div', { class: 'concept' }, e.concept),
+          conceptEl(e.spec, { potency: e.potency, dmgBase: TOWER_BY_ID.get(e.tower)?.damage[0] }, e.concept),
           e.flavor ? h('div', { class: 'flavor' }, e.flavor) : null,
           e.spec ? h('details', { class: 'rules-box' }, h('summary', null, 'Details'),
             h('ul', { class: 'rules' }, ...describeSpec(e.spec, { potency: e.potency }).map((l) => h('li', null, l)))) : null,

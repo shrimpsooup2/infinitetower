@@ -8,6 +8,7 @@ import { POWER_BY_ID } from '../../content/powers.ts';
 import { TOWER_BY_ID } from '../../content/towers.ts';
 import { parseKey } from '../../effects/keys.ts';
 import type { FusionSpec } from '../../effects/types.ts';
+import { autoScaling, extractLevelMarks, getAt, inlineLevelMarks, parsePath } from '../../effects/level.ts';
 import type { PowerDef, TowerDef } from '../../sim/types.ts';
 
 export interface ChatOptions {
@@ -98,7 +99,6 @@ export class MockLLM implements LLM {
     const isRepair = messages.length > 2;
     const spec = powers.length === 3 ? this.evolve(messages, tower, powers, o.key!) : offlineFusion(tower, powers, o.key!);
     spec.name = `Mock ${this.calls}`;
-    spec.concept = `Mock fusion for ${o.key}.`;
     spec.vfx = [...(spec.vfx ?? []).filter((v) => v.id !== 'mock_burst'), {
       id: 'mock_burst',
       layers: [{ kind: 'particles', count: 12, shape: 'star', direction: 'radial', speed: [2, 4], life: [0.3, 0.6], color: 'secondary', glow: true }],
@@ -115,8 +115,14 @@ export class MockLLM implements LLM {
         else spec.rules.push(payoff);
       }
     }
+    // Like the real model: mark a number or two to grow with level and quote one in the concept.
+    const grows = spec.scaling ?? autoScaling(spec).slice(0, 2);
+    const quoted = grows[0] ? getAt(spec, parsePath(grows[0].path) ?? []) : null;
+    spec.scaling = grows;
+    spec.concept = typeof quoted === 'number' ? `Mock fusion for ${o.key}; its key number is {${quoted}}.` : `Mock fusion for ${o.key}, hitting for {dmg 0.4}.`;
+    if (typeof quoted !== 'number') spec.rules.push({ when: { event: 'on_kill' }, do: [{ action: 'explode', at: 'target', radius: 1, amount: { dmg: 0.4 } }] });
     await new Promise((r) => setTimeout(r, isRepair ? 5 : 20));
-    return '```json\n' + JSON.stringify(spec) + '\n```';
+    return '```json\n' + JSON.stringify(inlineLevelMarks(spec)) + '\n```';
   }
 
   /** A triple keeps its parent pair (quoted in the prompt) and adds one tertiary twist. */
@@ -125,7 +131,11 @@ export class MockLLM implements LLM {
     const at = user.indexOf('PARENT FUSION');
     let parent: FusionSpec | null = null;
     try {
-      parent = at >= 0 ? (extractJson(user.slice(user.indexOf('\n', at))) as FusionSpec) : null;
+      if (at >= 0) {
+        // The parent is quoted with its level marks inline; lift them out again.
+        const lifted = extractLevelMarks(extractJson(user.slice(user.indexOf('\n', at))));
+        parent = { ...(lifted.raw as FusionSpec), scaling: lifted.marks };
+      }
     } catch {
       parent = null;
     }

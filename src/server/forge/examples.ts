@@ -1,8 +1,10 @@
 // Hand-written example fusions shown to the LLM. They are the single biggest
 // lever on output quality, so each one demonstrates what we want from a pair:
 // one concrete cause and effect in 2 or 3 rules, the base power leading, the
-// secondary reshaping it, a short plain concept, a 1-2 word name that says
-// what it does, and visuals that look like the idea. Two examples that do not
+// secondary reshaping it, a short concept that explains it in play with its
+// numbers in braces, a 1-2 word name that says what it does, a few numbers
+// that grow with level, and visuals that look like the idea. (`scaling` is
+// shown to the model inline as {"lvl": base, "per": step} marks.) Two examples that do not
 // share powers or tower with the request are rotated into each prompt.
 // Every example is validated and linted by the test suite.
 
@@ -20,11 +22,11 @@ export const PAIR_EXAMPLES: PairExample[] = [
     powers: ['frost', 'echo'],
     spec: {
       dsl: 1,
-      concept: 'Frozen enemies turn into bells; breaking one rings all the others twice.',
+      concept: "Hits chill. At {3} Chill, enemies become Ice Bells ({50%} slower, {2.5}s); a bell's death rings all bells twice for {dmg 0.5}.",
       name: 'Ice Bells',
       flavor: 'Hear that? Ice.',
       statuses: [{
-        id: 'bellfrost', name: 'Ice Bell', duration: 2.5, speed_mult: 0.35,
+        id: 'bellfrost', name: 'Ice Bell', duration: 2.5, speed_mult: 0.5,
         tint: 'base', icon: 'bell', overlay: 'shell', scale: 1.1, vfx: 'rime_glint',
       }],
       vfx: [
@@ -59,6 +61,7 @@ export const PAIR_EXAMPLES: PairExample[] = [
         beam: { style: 'lightning', width: [0.12, 0.05], color: 'base', core: '#ffffff', glow: true, amplitude: 0.18 },
       },
       sound: { preset: 'zap', pitch: 1.3 },
+      scaling: [{ path: 'statuses[0].duration', per: 0.2 }, { path: 'statuses[0].speed_mult', per: -0.02 }],
     },
   },
   {
@@ -66,7 +69,7 @@ export const PAIR_EXAMPLES: PairExample[] = [
     powers: ['venom', 'gravity'],
     spec: {
       dsl: 1,
-      concept: 'Sprays poison mist; soaked enemies become a well that pulls others in.',
+      concept: 'Sprays poison. At {6} Poison, an enemy becomes a {1.1}-tile well for {2.5}s that poisons and pulls in everything nearby.',
       name: 'Poison Well',
       flavor: 'Breathe in. Come closer.',
       zones: [{
@@ -111,6 +114,7 @@ export const PAIR_EXAMPLES: PairExample[] = [
         aura: 'bubbles', kill: 'dissolve', body: 'core',
       },
       sound: { preset: 'hiss', pitch: 0.8 },
+      scaling: [{ path: 'zones[0].duration', per: 0.25 }, { path: 'zones[0].radius', per: 0.08 }],
     },
   },
   {
@@ -118,7 +122,7 @@ export const PAIR_EXAMPLES: PairExample[] = [
     powers: ['radiance', 'executioner'],
     spec: {
       dsl: 1,
-      concept: 'Shots brand enemies; branded ones under 25% HP are struck down by light.',
+      concept: 'Shots brand enemies to take {20%} more damage. Branded enemies under {25%} HP are executed in a burst of light for {dmg 0.5}.',
       name: 'Judgment Beam',
       flavor: 'The sun does not forgive.',
       statuses: [{
@@ -156,6 +160,7 @@ export const PAIR_EXAMPLES: PairExample[] = [
         muzzle: 'flash', aura: 'sunrays', kill: 'pillar', body: 'eye',
       },
       sound: { preset: 'laser', pitch: 0.8 },
+      scaling: [{ path: 'rules[1].if[1].pct', per: 1 }, { path: 'rules[1].do[0].below_pct', per: 1 }, { path: 'statuses[0].damage_taken_mult', per: 0.02 }],
     },
   },
   {
@@ -163,7 +168,7 @@ export const PAIR_EXAMPLES: PairExample[] = [
     powers: ['tide', 'rain'],
     spec: {
       dsl: 1,
-      concept: 'Shells shove enemies back; every 4th shell brings a pushing downpour.',
+      concept: 'Shells have a {60%} chance to shove enemies back. Every {4}th shell brings {5} raindrops that push and hit for {dmg 0.35}.',
       name: 'Flood Shells',
       flavor: 'Forecast: retreat.',
       projectiles: [{
@@ -197,6 +202,7 @@ export const PAIR_EXAMPLES: PairExample[] = [
       ],
       visual: { impact: 'wave_crash', projectile: { shape: 'orb', trail: 'dots', trail_color: 'secondary' }, aura: 'ripples' },
       sound: { preset: 'thud', pitch: 0.9 },
+      scaling: [{ path: 'rules[0].if[0].p', per: 0.02 }, { path: 'rules[1].do[1].count', per: 0.34 }],
     },
   },
 ];
@@ -206,7 +212,7 @@ export const TRIPLE_EXAMPLE: { tower: string; powers: [string, string, string]; 
   powers: ['frost', 'echo', 'storm'],
   spec: {
     ...PAIR_EXAMPLES[0].spec,
-    concept: 'Frozen enemies turn into bells; thawing bells throw lightning at two others.',
+    concept: 'Hits chill. At {3} Chill, enemies become Ice Bells ({50%} slower, {2.5}s); when a bell thaws, lightning jumps to {2} others for {dmg 0.4}.',
     name: 'Thunder Bells',
     flavor: 'The last note is thunder.',
     vfx: [
@@ -229,5 +235,6 @@ export const TRIPLE_EXAMPLE: { tower: string; powers: [string, string, string]; 
       },
     ],
     visual: { ...PAIR_EXAMPLES[0].spec.visual, beam: { ...PAIR_EXAMPLES[0].spec.visual!.beam!, core: 'tertiary' } },
+    scaling: [...PAIR_EXAMPLES[0].spec.scaling!, { path: 'rules[3].do[0].to.n', per: 0.2 }],
   },
 };

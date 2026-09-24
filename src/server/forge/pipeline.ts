@@ -273,6 +273,8 @@ export class Forge {
         if (!v.ok || !v.spec) problems.push(...v.errors.slice(0, 12));
         else {
           spec = v.spec;
+          // The model chose which numbers grow with level; none marked means all fixed.
+          spec.scaling ??= [];
           problems.push(...lintFusion(spec, job.powers, parent?.spec ?? null).problems);
           if (!problems.length) problems.push(...(await this.noveltyProblems(job, spec, parent)));
         }

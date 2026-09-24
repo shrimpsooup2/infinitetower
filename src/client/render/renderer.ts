@@ -376,6 +376,27 @@ export class Renderer {
       polyPath(ctx, cx + R * 0.95, cy - R * 0.95, Math.max(3, cam.s * 0.08), 4, Math.PI / 4);
       fillStroke(ctx, PAL.purple, 1.2);
     }
+    if (t.level > 1) this.drawLevelTag(cx - R * 1.05, cy + R * 0.95, t.level);
+  }
+
+  /** A small green tag with the tower's level on the corner of its plinth. */
+  private drawLevelTag(x: number, y: number, level: number): void {
+    const ctx = this.ctx;
+    const hgt = Math.max(10, this.cam.s * 0.26);
+    const text = String(level);
+    ctx.font = `700 ${Math.round(hgt * 0.78)}px Ubuntu, 'Trebuchet MS', sans-serif`;
+    const wdt = Math.max(hgt, ctx.measureText(text).width + hgt * 0.5);
+    ctx.beginPath();
+    ctx.roundRect(x - wdt / 2, y - hgt / 2, wdt, hgt, hgt * 0.3);
+    ctx.fillStyle = '#4fbf5c';
+    ctx.fill();
+    ctx.lineWidth = Math.max(1.2, hgt * 0.12);
+    ctx.strokeStyle = '#2d6b35';
+    ctx.stroke();
+    ctx.fillStyle = '#ffffff';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, x, y + hgt * 0.04);
   }
 
   private drawZone(z: Zone, dt: number): void {

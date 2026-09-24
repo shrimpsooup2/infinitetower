@@ -181,8 +181,8 @@ canvas#game { position: fixed; inset: 0; display: block; }
 .statgrid span:nth-child(2n) { text-align: right; }
 .targets { display: flex; gap: 3px; flex-wrap: wrap; }
 .targets .btn { padding: 3px 7px; font-size: 11px; }
-.side .actions { display: flex; gap: 6px; }
-.side .actions .btn { flex: 1; }
+.side .actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.side .actions .btn { flex: 1; font-size: 13px; padding: 6px 4px; }
 .info-card { font-size: 12px; font-weight: 500; text-shadow: var(--outline); line-height: 1.35; }
 
 /* Toasts & banners */
@@ -355,6 +355,11 @@ canvas#game { position: fixed; inset: 0; display: block; }
 
 /* Fusion text: the short concept leads, exact rules fold away */
 .concept { font-size: 14px; line-height: 1.3; text-shadow: var(--outline); }
+.concept .num { font-weight: 700; }
+.concept .num.lvl { color: #9dff8f; border-bottom: 1px dotted rgba(157, 255, 143, 0.8); cursor: help; }
+.concept .num.dmg { color: #ffd67a; cursor: help; }
+.badge.lvbadge { background: #3f9a4a; }
+.actions .lvbtn { --c: #85e37d; --c2: #6fc567; }
 .rules-box summary { cursor: pointer; font-size: 11px; opacity: 0.85; text-shadow: var(--outline); user-select: none; }
 .rules-box[open] summary { margin-bottom: 4px; }
 .card .sockcost { position: absolute; bottom: 2px; right: 3px; font-size: 9px; color: var(--gold); text-shadow: var(--outline); }

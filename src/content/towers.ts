@@ -116,6 +116,29 @@ export const SOCKET_COST = [80, 240, 720];
 export const SOCKET_RARITY_WEIGHT = [1, 0.5, 0.2];
 export const SOCKET_ROLE = ['Base', 'Secondary', 'Tertiary'] as const;
 
+/**
+ * Tower levels: bought with gold, separate from tiers. Each level adds base
+ * damage (and so every {"dmg"} value), plus whatever numbers the tower's
+ * fusion marks as growing. A level costs more the higher the tower's tier and
+ * the more (and rarer) cards it holds, and each level makes the tower's next
+ * sockets and tier upgrade pricier.
+ */
+export const LEVELS = {
+  max: 10,
+  /** Base damage per level above 1. */
+  damage: 0.1,
+  /** The first level-up costs this share of the tower's build price... */
+  base: 0.5,
+  /** ...times this per tier... */
+  tierMult: [1, 1.5, 2.1],
+  /** ...times this for each level already gained... */
+  growth: 1.3,
+  /** ...times (1 + these per socketed card, by rarity: Common, Rare, Epic, Legendary). */
+  cardWeight: [0.3, 0.5, 0.75, 1.1],
+  /** Tier upgrades cost this much more per level. */
+  tierTax: 0.1,
+};
+
 export function towerCostToTier(def: TowerDef, tier: number): number {
   let c = def.cost;
   for (let i = 1; i < tier; i++) c += def.upgradeCost[i - 1];

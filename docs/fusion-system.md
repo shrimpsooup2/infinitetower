@@ -37,7 +37,8 @@ interprets. The schema lives in `src/effects/dsl.ts`, which also generates the J
 ```jsonc
 {
   "dsl": 1,
-  "concept": "Frozen enemies turn into bells; breaking one rings all the others twice.",  // ≤ ~12 words
+  // What it does in play, with live numbers in braces (≤ 25 words; see §2.5)
+  "concept": "Hits chill. At {3} Chill, enemies become Ice Bells ({50%} slower, {2.5}s); a bell's death rings all bells twice for {dmg 0.5}.",
   "name": "Ice Bells",                 // 1-2 plain words saying what it does (3 if truly needed), unique
   "flavor": "Hear that? Ice.",         // ≤ ~6 words
   "stats":   { "damage_mult": 0.9, "rate_mult": 1.1, "chains": 1, "crit_chance": 0.1 },
@@ -49,7 +50,10 @@ interprets. The schema lives in `src/effects/dsl.ts`, which also generates the J
   "vfx":         [ ... ],   // up to 6 custom visual effects, each with up to 4 layers
   "rules":       [ ... ],   // 1-6 rules: trigger -> conditions -> actions
   "visual": { "body": "crystal", "aura": "snowfall", "impact": "b_bell", "kill": "shatter", ... },
-  "sound":  { "attack": "chime", "pitch": 1.2 }
+  "sound":  { "attack": "chime", "pitch": 1.2 },
+  // Numbers that grow with the tower's level. The model writes them inline as
+  // {"lvl": 2.5, "per": 0.2} in place of the number; validation lifts them out to here.
+  "scaling": [ { "path": "statuses[0].duration", "per": 0.2 }, { "path": "statuses[0].speed_mult", "per": -0.02 } ]
 }
 ```
 
@@ -129,6 +133,48 @@ to draw almost anything.
 At runtime the engine limits how deep chained spawns can go and how often they fire, caps
 restored lives at the maximum, and keeps crowd control from becoming permanent.
 
+### 2.5 Levels and live numbers
+
+Towers level up separately from their tiers (game-design.md §3.1). Every level adds 10% base
+damage, so every `{"dmg": x}` grows by itself. **Every other number is fixed unless the spec
+marks it** (`src/effects/level.ts`):
+
+- The model writes `{"lvl": base, "per": step}` in place of any gameplay number.
+  `validateSpec` lifts each mark into `scaling` as a path and a step, and leaves the base
+  number in place.
+- `checkScaling` keeps at most 6 marks and drops any on `{"dmg"}` values, visuals, sounds, or
+  numbers that don't exist. A step is at most 15% of its base per level (for `*_mult` numbers,
+  15% of their distance from 1). Faster steps are slowed with a warning rather than rejected.
+- `specAtLevel` moves each marked number by `per × (level − 1)` and re-parses the result, so
+  every number stays inside its schema range (a slow can't pass its cap) and counts stay
+  whole. The tower keeps the unlevelled spec and recompiles on each level-up.
+- Specs written without marks have no `scaling` at all. These are hand-made powers, offline
+  fusions and fusions forged before levels existed. For them, `autoScaling` picks up to four
+  natural numbers: status and zone durations, proc chances, blast and zone radii, drone
+  lifetimes and crit chance. A fusion the Forge designed with no marks keeps `scaling: []`
+  and grows only its damage.
+
+**Live numbers in the concept** (`src/effects/concept.ts`). The concept is short rules text.
+Every number it quotes from the spec is wrapped in braces:
+
+| Token | Means | Shown as |
+| --- | --- | --- |
+| `{2.5}` | a plain number in the spec | its value |
+| `{60%}` | a fraction (chance 0.6), or a multiplier as its change (speed_mult 0.5 = "50% slower", damage_taken_mult 1.2 = "20% more") | a percentage |
+| `{dmg 0.5}` | a `{"dmg": 0.5}` amount | the real damage: 0.5 × tower damage × potency |
+
+- `bindConcept` matches each token to a number in the spec. A token that matches nothing is
+  a validation error, fed back to the model, so the text can't promise what the fusion doesn't
+  do.
+- `renderConcept` shows each token at the tower's real value. That value takes in the level;
+  potency for damage; √potency for hard crowd-control durations, capped at 4 s, as the engine
+  does; and the potency factor for slows, amps and displacement.
+- It marks which numbers grow and by how much. In the panel, growing numbers are green, with
+  the step on hover, and damage is gold.
+- The Details list (`describeSpec`) uses the same scaling and labels every growing number
+  inline with its step, such as "3.1 s (+0.2 s/lvl)". Anything it can't place inline is
+  listed at the end.
+
 ---
 
 ## 3. The forge pipeline
@@ -151,7 +197,7 @@ request(key)
 
 ### 3.1 The prompt
 
-`src/server/forge/prompt.ts`, versioned (`PROMPT_VERSION`) and stored with every fusion.
+`src/server/forge/prompt.ts`, versioned (`PROMPT_VERSION`, now 7) and stored with every fusion.
 
 - **The system prompt** gives the model:
   - its role, The Forge;
@@ -168,7 +214,11 @@ request(key)
     - the name is 1–2 plain words that say what it does, like an ability name ("Ice Bells",
       "Poison Well"); 3 words only if truly necessary or brilliant;
     - never a blend of the power names or their other forms ("Frozen Echo");
-    - the concept is one plain sentence of at most 12 words, and the flavour at most 6 words;
+    - the concept says what the fusion does in play, like a card's rules text, in at most 25
+      words (most need 12–18), with every number it quotes from the JSON in braces (§2.5);
+    - the flavour is at most 6 words;
+  - **levels**: every level adds 10% damage, and the model marks 1–3 numbers that carry the
+    idea with `{"lvl": base, "per": step}` so they grow (never damage, visuals or ordinals);
   - what to avoid: pure stat boosts, re-used power effects, dead mechanics, loops, long text;
   - game facts for scale: map size, speeds, dimensions, modifiers, ranges, HP growth;
   - the full language cheat sheet and the output format.
@@ -183,8 +233,11 @@ request(key)
   - an **avoid list** of existing fusions on the same tower with the same base, so siblings
     differ.
 - **The triple prompt:** the parent spec in full, the tertiary card, the evolution rules
-  (keep the parent, add a twist, use the tertiary colour prominently, evolve the name), and
-  the other tertiary evolutions of the same parent to differ from.
+  (keep the parent and its level marks, add a twist, use the tertiary colour prominently,
+  evolve the name, add the twist to the concept), and the other tertiary evolutions of the
+  same parent to differ from.
+- Examples and parents are shown with their level marks written back inline
+  (`inlineLevelMarks`), exactly as the model should write them.
 - **Repair messages** list the exact problems and ask for a complete corrected spec.
 
 ### 3.2 Model client
@@ -199,8 +252,10 @@ with Ollama's cloud (`https://ollama.com`) and with a local Ollama.
   and trailing commas.
 
 `MockLLM` is a deterministic stand-in. It returns the offline combination under a new name,
-answers repair requests and evolves triples from the parent quoted in the prompt, so the
-whole pipeline can run in tests.
+with a level mark or two and a concept that quotes a number. It answers repair requests and
+evolves triples from the parent quoted in the prompt, so the whole pipeline can run in tests.
+(Structured-output mode, `OLLAMA_FORMAT=schema`, can't express inline marks; a model in that
+mode can still fill `scaling` with paths.)
 
 ### 3.3 Quality lint
 
@@ -214,11 +269,12 @@ whole pipeline can run in tests.
 - it's nearly identical to the plain base power;
 - it's visually bland, using fewer than three visual hooks, custom effects or vfx actions;
 - the name is over 3 words, or is made only of the powers' names and forms;
-- the concept is over 18 words, or the flavour over 10;
+- the concept is over 28 words (32 for a triple), or quotes no numbers; the flavour is over 10
+  words;
 - for a pair: more than 4 rules, or more than 2 custom statuses/projectiles/zones.
 
-Softer notes, such as the secondary dominating the base or no custom vfx, are logged but don't
-block. For triples, lint also checks that the tertiary changed something and compares the spec
+Softer notes, such as the secondary dominating the base, no custom vfx, or no numbers that
+grow with level, are logged but don't block. For triples, lint also checks that the tertiary changed something and compares the spec
 against the parent (see §5.4).
 
 ### 3.4 Novelty

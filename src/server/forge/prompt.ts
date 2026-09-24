@@ -6,13 +6,15 @@
 import type { FusionSpec } from '../../effects/types.ts';
 import type { PowerDef, TowerDef } from '../../sim/types.ts';
 import { cheatSheet } from '../../effects/dsl.ts';
+import { inlineLevelMarks } from '../../effects/level.ts';
+import { LEVELS } from '../../content/towers.ts';
 import { BUILTIN_VFX_IDS } from '../../effects/vfxlib.ts';
 import { DAMAGE_COLORS } from '../../content/colors.ts';
 import { PAIR_EXAMPLES, TRIPLE_EXAMPLE } from './examples.ts';
 import { POWER_BY_ID } from '../../content/powers.ts';
 import { TOWER_BY_ID } from '../../content/towers.ts';
 
-export const PROMPT_VERSION = 6;
+export const PROMPT_VERSION = 7;
 
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant';
@@ -46,8 +48,16 @@ KEEP IT SIMPLE AND CONCRETE (above all for pairs)
 
 WORDS (players read them on a small panel, so less is more)
 - "name": 1 or 2 plain words that say what it does or what it looks like, like an ability name (3 words only if it is truly necessary or a brilliant name): "Ice Bells", "Poison Well", "Judgment Beam", "Flood Shells", "Chain Freeze", "Gravity Mine". Never glue the powers' names or their other forms together ("Frozen Echo", "Glacial Resonance", "Venomous Gravity", "Rime Tempest" are all wrong). At most one word may be a power's name; the other must say what happens. At most 32 characters, and unique.
-- "concept": ONE short plain sentence, at most 12 words, saying what the player will see happen. No lore, no metaphors that need explaining. Good: "Frozen enemies turn into bells; breaking one rings all the others twice."
+- "concept": what the fusion DOES in play, in plain words with its key numbers, like a card's rules text. At most 25 words; most need only 12-18. No lore, no metaphors that need explaining.
+  Wrap every number you quote from your JSON in braces so the game can show its live value: {2.5} for a plain number (put the unit after it: "{2.5}s", "{1.1} tiles"), {60%} for a fraction or multiplier shown as a percent (chance 0.6 = "{60%} chance", speed_mult 0.5 = "{50%} slower", damage_taken_mult 1.2 = "{20%} more damage"), and {dmg 0.5} for a {"dmg": 0.5} amount (the game shows the real damage). Every braced number must appear in your JSON. Numbers that are not in your JSON (like a built-in status's strength) are written without braces or left out.
+  Good: "Hits chill. At {3} Chill, enemies become Ice Bells ({50%} slower, {2.5}s); a bell's death rings all bells twice for {dmg 0.5}."
 - "flavor": at most 6 words of wit, or a tiny tagline.
+
+LEVELS (numbers that grow)
+Players can level a tower up to ${LEVELS.max} times, separately from its tier. Every level adds ${Math.round(LEVELS.damage * 100)}% base damage, so every {"dmg": x} grows on its own. YOU choose which other numbers grow: write {"lvl": base, "per": step} in place of the number, e.g. "duration": {"lvl": 2.5, "per": 0.2} (2.5 s at level 1, +0.2 s per level). The game labels those numbers as growing and every other number as fixed.
+- Mark 1 to 3 numbers that make THE IDEA stronger as it grows: a crowd-control duration, a proc chance, a blast or zone radius, a chain or projectile count. Leave the rest fixed.
+- A step is at most 15% of the base per level (for *_mult numbers, 15% of their distance from 1; a slow's speed_mult steps down).
+- Never mark {"dmg"} amounts (they already grow), visuals, sounds, or ordinals the concept reads as "3rd".
 
 WHAT TO AVOID
 - Pure stat boosts ("+30% damage") as the main effect. Stats may support the idea, never be the idea.
@@ -58,7 +68,7 @@ WHAT TO AVOID
 - Long text. Every extra word in concept or flavor makes the fusion harder to understand.
 
 GAME FACTS (for scale)
-Map: 24x14 tiles. Enemies are geometric shapes walking a path at 0.4 to 2 tiles/s, and they climb through dimensions: waves 1-20 are 2D polygons (3 to 14 sides; more sides = tougher, armor grows with sides; 11+ sides have shields, splitting, healing or blinking), waves 21-40 are 3D polyhedra (complex ones spawn, heal, shield, blink or revive), waves 41-60 are 4D polytopes that periodically phase out of reach (DoTs and zones still hurt them). Any group can be flying (Cannon, Mortar and Flame cannot hit flyers), a swarm of tiny copies, swift, elite (big, tough) or stealthy (must be revealed or marked). Bosses resist crowd control. Tower ranges: 2.2 (Flame) to 8.6 (Mortar) tiles. Towers attack 0.4 to 5 times per second. Enemy HP grows about 15% per wave; the balancer tunes damage, so focus on what the fusion does, not on scaling tricks.
+Maps: 20x12 to 30x17 tiles. Enemies are geometric shapes walking a path at 0.4 to 2 tiles/s, and they climb through dimensions: waves 1-20 are 2D polygons (3 to 14 sides; more sides = tougher, armor grows with sides; 11+ sides have shields, splitting, healing or blinking), waves 21-40 are 3D polyhedra (complex ones spawn, heal, shield, blink or revive), waves 41-60 are 4D polytopes that periodically phase out of reach (DoTs and zones still hurt them). Any group can be flying (Cannon, Mortar and Flame cannot hit flyers), a swarm of tiny copies, swift, elite (big, tough) or stealthy (must be revealed or marked). Bosses resist crowd control. Tower ranges: 2.2 (Flame) to 8.6 (Mortar) tiles. Towers attack 0.4 to 5 times per second. Enemy HP grows about 15% per wave; the balancer tunes damage, so focus on what the fusion does, not on scaling tricks.
 
 THE EFFECT LANGUAGE
 You never write code. You compose ONE JSON "fusion spec" from the building blocks below. Anything not listed does not exist.
@@ -66,10 +76,11 @@ You never write code. You compose ONE JSON "fusion spec" from the building block
 ${cheatSheet(BUILTIN_VFX_IDS)}
 
 OUTPUT FORMAT
-Reply with exactly ONE JSON object and nothing else: no markdown fences, no commentary. Start with "concept", then "name", then "flavor", then the rest. Every id is lowercase_snake_case. Every damage amount contains {"dmg": x}.`;
+Reply with exactly ONE JSON object and nothing else: no markdown fences, no commentary. Start with "concept", then "name", then "flavor", then the rest. Every id is lowercase_snake_case. Every damage amount contains {"dmg": x}. Numbers that grow with level are written {"lvl": base, "per": step}.`;
 
+/** A spec as the model should write it: level marks back in place. */
 function compact(spec: FusionSpec): string {
-  return JSON.stringify(spec);
+  return JSON.stringify(inlineLevelMarks(spec));
 }
 
 function colourName(role: 'base' | 'secondary' | 'tertiary', p: PowerDef): string {
@@ -132,7 +143,9 @@ ${avoidText}
 Before answering, check:
 - ${base.name} is the heart; ${secondary.name} visibly reshapes how it works; the twist seed shaped the idea.
 - It is SIMPLE: 2 or 3 rules, one cause and effect, no vars, at most one custom status/projectile/zone.
-- The name is 1-2 plain words saying what it does (3 only if truly necessary or brilliant), not a blend of "${base.name}"/"${secondary.name}" words. The concept is one sentence of at most 12 words. The flavor is at most 6 words.
+- The name is 1-2 plain words saying what it does (3 only if truly necessary or brilliant), not a blend of "${base.name}"/"${secondary.name}" words. The flavor is at most 6 words.
+- The concept explains what it does in play with its key numbers in braces ({2.5}, {60%}, {dmg 0.5}), in at most 25 words, and every braced number is in the JSON.
+- 1 to 3 numbers that carry the idea grow with level: {"lvl": base, "per": step}.
 - At least one rule uses a trigger other than on_hit/on_attack.
 - Rules whose trigger provides no target never use "target".
 - Every damage amount uses {"dmg": x}.
@@ -159,7 +172,7 @@ export function triplePrompt(
 EXAMPLE OF AN EVOLUTION — ${exParent.spec.name} + Storm (tertiary):
 Parent: ${compact(exParent.spec)}
 Evolved: ${compact(ex.spec)}
-(It kept every parent rule and template, added one rule and one vfx, used the "tertiary" colour, and swapped one word of the name.)
+(It kept every parent rule, template and level mark, added one rule and one vfx, used the "tertiary" colour, swapped one word of the name, and added the twist to the concept with its numbers.)
 
 NOW EVOLVE THIS FUSION.
 
@@ -178,7 +191,8 @@ Rules for an evolution:
 - ${tertiary.name} must be clearly visible as a twist in the mechanics AND the visuals: use the "tertiary" colour somewhere prominent (a new vfx, an accent, a trail_color, a beam core...).
 - Add ONE simple rule for the twist (at most two), in the same concrete style as the parent.
 - The name stays short (1-2 plain words, 3 only if truly necessary or brilliant): swap one word so it says what the twist adds (e.g. "Ice Bells" -> "Thunder Bells"). Never glue power names together.
-- Rewrite the concept as one sentence of at most 14 words that includes the twist; flavor at most 6 words.
+- Rewrite the concept to include the twist: what it does in play, with key numbers in braces, at most 28 words. Flavor at most 6 words.
+- Keep the parent's {"lvl", "per"} marks, and mark one number of the twist if it should grow with level.
 - Rules whose trigger provides no target never use "target". Every damage amount uses {"dmg": x}.
 
 Reply with the JSON object only.`;

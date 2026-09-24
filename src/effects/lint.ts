@@ -8,6 +8,7 @@
 
 import type { Action, FusionSpec } from './types.ts';
 import type { PowerDef } from '../sim/types.ts';
+import { conceptWords } from './concept.ts';
 
 const COSMETIC = new Set(['vfx', 'sound']);
 const PASSIVE = new Set(['modify_tower', 'set_var', 'add_var', 'vfx', 'sound']);
@@ -170,9 +171,14 @@ export function lintFusion(spec: FusionSpec, powers: PowerDef[], parent: FusionS
   if (nameWords.length && nameWords.every((w) => forms.has(w.toLowerCase().replace(/[^a-z]/g, '')))) {
     problems.push(`The name "${spec.name}" just combines the power names. Name it after what it does, in 1 or 2 plain words (like "Ice Bells" or "Poison Well").`);
   }
-  const conceptWords = words(spec.concept).length;
-  if (conceptWords > 18) problems.push(`The concept is too long (${conceptWords} words). Say what happens in one plain sentence of at most 12 words.`);
+  const cw = conceptWords(spec.concept);
+  const cmax = parent ? 32 : 28;
+  if (cw > cmax) problems.push(`The concept is too long (${cw} words). Explain what it does in play in at most ${parent ? 28 : 25} plain words, quoting its key numbers in braces.`);
+  if (!/\{[^}]*\d[^}]*\}/.test(spec.concept)) {
+    problems.push('The concept quotes no numbers. Say what it does in play with its key numbers in braces, e.g. "freezes for {1.2}s", "{30%} chance", "hits for {dmg 0.5}".');
+  }
   if (words(spec.flavor).length > 10) problems.push('The flavor is too long: at most 6 words.');
+  if (!spec.scaling?.length) notes.push('No numbers grow with level; consider marking 1-3 with {"lvl": base, "per": step}.');
 
   // Pairs stay simple: one cause and effect, not a machine.
   if (!parent && powers.length === 2) {

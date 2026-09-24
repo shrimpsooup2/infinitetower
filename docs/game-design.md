@@ -58,6 +58,28 @@ times (a Bolt is 100, then +200, then +400).
 
 Targeting modes: first, last, strong, weak, close. Selling refunds 70%.
 
+### 3.1 Levels
+
+Separately from its tier, a tower can be **levelled up** with gold, from level 1 to 10 (L, or
+the Level button). Levels make a tower stronger without opening sockets:
+
+- every level adds **10% base damage**, so every damage number in its fusion grows with it;
+- the numbers its fusion **marks as growing** (a stun's length, a proc chance, a blast radius,
+  a chain count) grow by their own step per level. The Forge chooses which numbers grow and
+  by how much when it designs a fusion; everything else stays fixed. Hand-made powers and
+  offline fusions grow a few natural numbers (status and zone durations, chances, radii).
+
+A level costs more the higher the tower's tier and the more (and rarer) cards it holds:
+
+> level cost = tower price × 0.5 × tier factor (1 / 1.5 / 2.1) × 1.3^(level − 1) ×
+> (1 + 0.3 per Common, 0.5 per Rare, 0.75 per Epic, 1.1 per Legendary card socketed)
+
+So a bare Bolt's first level is 50 gold, and the same Bolt at tier 2 with an Epic and a Rare
+card pays 170. Levels also **raise the price of that tower's next socket** (by 10% per level
+for a Common card up to 26% for a Legendary) **and of its next tier** (10% per level). Level
+first and your cards cost more to add; socket first and every level costs more. That choice
+is the point.
+
 ---
 
 ## 4. Powers, cards and packs
@@ -133,9 +155,11 @@ cards cost more. The rarity markup is biggest in the base slot, where a card car
 | Epic | 240 (×3) | 480 (×2) | 1,010 (×1.4) |
 | Legendary | 400 (×5) | 720 (×3) | 1,295 (×1.8) |
 
-Those are wave-1 prices. Socket prices also rise as a run goes on, and faster for rarer cards
-(+2% per wave for Common, +3% Rare, +4.5% Epic, +6.5% Legendary), because gold income grows
-too. By wave 60 a Legendary card in the tertiary slot costs about 6,300 gold.
+Those are prices at wave 1 on a level-1 tower. Prices rise with the **level of the tower**
+the card goes into (+10% per level for Common, +14% Rare, +19% Epic, +26% Legendary; see
+§3.1), and a little as the run goes on, because gold income grows too (+1% per wave for
+Common, +1.5% Rare, +2.2% Epic, +3.2% Legendary). By wave 60 a Legendary card in the tertiary
+slot costs about 3,700 gold on a level-1 tower, and about 12,500 on a level-10 one.
 
 So a Legendary is worth saving for the right tower and the moment you can afford it. The hand
 shows each card's price for the selected tower.
@@ -145,6 +169,12 @@ shows each card's price for the selected tower.
 - Fusions are forged by the AI the first time anyone makes them (see fusion-system.md).
   Until one arrives, the tower plays an offline combination of its powers, so it is never
   idle.
+
+**Reading a fusion.** The panel shows the fusion's short explanation, written by the Forge,
+with its key numbers live: each is shown at the tower's real level, damage and balance.
+Numbers in green grow with level (hover for the step), damage is shown in gold (it grows 10%
+per level), and plain numbers are fixed. The Details list gives every rule, with each growing
+number labelled by its step, such as "3.1 s (+0.2 s/lvl)".
 
 **No previews.** Hovering a card over a tower shows "???" for any fusion you haven't made
 yourself. Fusions you've made are stored in your browser, and those you can preview. The
@@ -278,8 +308,8 @@ further.
 - **Gold** comes from kill bounties (growing 4% per wave), a wave-clear bonus (30 + 9 × wave)
   and an **early-call bonus**. Calling the next wave early pays for the countdown time you
   skip. Waves can overlap.
-- Gold goes to towers, upgrades, sockets and Shop packs, and comes back from selling (70%)
-  and scrapping cards.
+- Gold goes to towers, upgrades, levels, sockets and Shop packs, and comes back from selling
+  (70%, levels included) and scrapping cards.
 - **Lives:** a leaked shape costs its lives value. Most shapes cost 1, elites 2, and bosses
   10–20.
 - There is no interest mechanic. It rewards hoarding, which works against experimenting.
@@ -305,9 +335,10 @@ highlight and waits until the player actually does each thing:
 11. The Forge, World Firsts and discovery numbers.
 12. Order matters (named using the player's own two cards).
 13. You can't preview a fusion until you've made it, and the Codex keeps what you make.
-14. Packs over time, the Shop, and scrapping.
-15. Hotkeys.
-16. Survive the remaining waves.
+14. Level the tower up: more damage, growing numbers, and pricier sockets and tiers after.
+15. Packs over time, the Shop, and scrapping.
+16. Hotkeys.
+17. Survive the remaining waves.
 
 The tutorial can be skipped at any step. After it's finished it moves to the bottom of the
 title menu for replays. Nothing else in the UI carries instructional text.
@@ -342,7 +373,7 @@ title menu for replays. Nothing else in the UI carries instructional text.
 | --- | --- |
 | 1–0 | Pick a tower to build (Shift+click keeps building) |
 | Space | Send the next wave |
-| U / S / T | Upgrade / sell (press twice) / cycle targeting |
+| U / L / S / T | Upgrade / level up / sell (press twice) / cycle targeting |
 | F | Game speed 1×/2×/3× |
 | Backspace | Remove the last socketed card |
 | Esc / P | Cancel, or pause |

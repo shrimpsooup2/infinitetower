@@ -12,7 +12,8 @@ import { Path } from './path.ts';
 import { Rng } from './rng.ts';
 import { SpatialHash } from './spatial.ts';
 import { dist2, hashString } from './math.ts';
-import { TOWER_BY_ID, SOCKET_COST, SOCKET_RARITY_WEIGHT, towerCostToTier } from '../content/towers.ts';
+import { TOWER_BY_ID, SOCKET_COST, SOCKET_RARITY_WEIGHT, LEVELS, towerCostToTier } from '../content/towers.ts';
+import { specAtLevel, withScaling } from '../effects/level.ts';
 import { POWERS, POWER_BY_ID } from '../content/powers.ts';
 import { BOSS_WAVES } from '../content/enemies.ts';
 import { DIFFICULTY_BY_ID, RULES } from '../content/rules.ts';
@@ -239,8 +240,8 @@ export class World {
     if (this.gold < def.cost) return 'Not enough gold';
     this.gold -= def.cost;
     const t: Tower = {
-      id: this.nextId++, def, c, r, x: c + 0.5, y: r + 0.5, tier: 1, angle: -Math.PI / 2, targetMode: 'first', targetId: 0,
-      cooldown: 0, sockets: [], cards: [], specKey: '', specState: 'none', rt: null, stats: undefined as never, invested: def.cost,
+      id: this.nextId++, def, c, r, x: c + 0.5, y: r + 0.5, tier: 1, level: 1, angle: -Math.PI / 2, targetMode: 'first', targetId: 0,
+      cooldown: 0, sockets: [], cards: [], specKey: '', specState: 'none', specSrc: null, rt: null, stats: undefined as never, invested: def.cost,
       socketGold: 0, placedTick: this.tick, kills: 0, dmgTotal: 0, dmgWave: 0, attackCount: 0, lastAttackTick: this.tick,
       disabledUntil: 0, barrel: 0, recoil: 0, beamTargets: [], beamRamp: 1, beamTimer: 0, coneOn: false, drones: [], droneTimer: 0.2,
       mods: [], inRange: null, goldWave: 0, livesWave: 0, conduits: [], aura: 0, liveSpawns: 0, eventsThisTick: 0,
@@ -254,8 +255,40 @@ export class World {
     return t;
   }
 
+  /** Gold for the next tier. Each level the tower has gained makes it pricier. */
   upgradeCost(t: Tower): number | null {
-    return t.tier >= 3 ? null : t.def.upgradeCost[t.tier - 1];
+    if (t.tier >= 3) return null;
+    return Math.round((t.def.upgradeCost[t.tier - 1] * (1 + LEVELS.tierTax * (t.level - 1))) / 5) * 5;
+  }
+
+  /**
+   * Gold for the tower's next level: grows with the level, the tier, and the
+   * number and rarity of the cards socketed into it.
+   */
+  levelCost(t: Tower): number | null {
+    if (t.level >= LEVELS.max) return null;
+    const cards = t.cards.reduce((a, c) => a + (LEVELS.cardWeight[c.rarity] ?? LEVELS.cardWeight[0]), 0);
+    const raw = t.def.cost * LEVELS.base * LEVELS.tierMult[t.tier - 1] * LEVELS.growth ** (t.level - 1) * (1 + cards);
+    return Math.round(raw / 5) * 5;
+  }
+
+  levelUp(id: number): string | null {
+    const t = this.towerById.get(id);
+    if (!t) return 'No tower';
+    const cost = this.levelCost(t);
+    if (cost === null) return 'Already max level';
+    if (this.gold < cost) return 'Not enough gold';
+    this.gold -= cost;
+    t.invested += cost;
+    t.level++;
+    t.stats = baseStats(t);
+    this.relevel(t);
+    return null;
+  }
+
+  /** Re-install the tower's spec at its current level. */
+  private relevel(t: Tower): void {
+    if (t.rt && t.specSrc) this.setSpec(t, t.specKey, t.specSrc.spec, t.specSrc.potency, t.specState, true);
   }
 
   upgrade(id: number): string | null {
@@ -299,15 +332,17 @@ export class World {
    * Gold to socket a card of this rarity into the tower's next slot. The slot
    * price climbs steeply; the rarity markup is biggest in the base slot and
    * tapers off in later slots, where a card carries less of the fusion. Prices
-   * also rise every wave as income grows, fastest for the rarest cards.
+   * rise with the tower's level (steepest for the rarest cards) and a little
+   * every wave as income grows.
    */
   socketCost(t: Tower, rarity = 0): number | null {
     const i = t.sockets.length;
     if (i >= 3) return null;
     const r = RARITIES[rarity] ?? RARITIES[0];
     const markup = 1 + (r.socketMult - 1) * SOCKET_RARITY_WEIGHT[i];
+    const level = 1 + r.levelGrowth * (t.level - 1);
     const stage = 1 + r.socketGrowth * Math.max(0, this.waveN - 1);
-    return Math.round((SOCKET_COST[i] * markup * stage) / 5) * 5;
+    return Math.round((SOCKET_COST[i] * markup * level * stage) / 5) * 5;
   }
 
   /** Why a power cannot be socketed right now, or null if it can. */
@@ -362,6 +397,7 @@ export class World {
   refreshSpec(t: Tower): void {
     if (!t.sockets.length) {
       t.rt = null;
+      t.specSrc = null;
       t.specKey = '';
       t.specState = 'none';
       this.refreshLook(t);
@@ -381,17 +417,19 @@ export class World {
     return true;
   }
 
-  private setSpec(t: Tower, key: string, spec: FusionSpec, potency: number, state: SpecState): void {
+  private setSpec(t: Tower, key: string, spec: FusionSpec, potency: number, state: SpecState, relevel = false): void {
     const oldVars = t.rt?.key === key ? t.rt.vars : null;
     const rarity = rarityFactor(t.cards.map((c) => c.rarity));
-    t.rt = compileSpec(spec, key, potency * rarity, colorsFor(t.sockets), t.def.dtype);
+    const src = withScaling(spec);
+    t.specSrc = { spec: src, potency };
+    t.rt = compileSpec(specAtLevel(src, t.level), key, potency * rarity, colorsFor(t.sockets), t.def.dtype);
     if (oldVars) for (const [k, v] of oldVars) if (t.rt.vars.has(k)) t.rt.vars.set(k, v);
     t.specKey = key;
     t.specState = state;
     t.mods = [];
     this.refreshLook(t);
     for (const d of this.drones) if (d.tower === t.id && d.isBase) d.color = t.look.color;
-    if (state === 'ready' || state === 'offline' || state === 'provisional') this.stats.fusions++;
+    if (!relevel && (state === 'ready' || state === 'offline' || state === 'provisional')) this.stats.fusions++;
   }
 
   refreshLook(t: Tower): void {
@@ -708,7 +746,7 @@ export class World {
       stats: { ...this.stats },
       phase: this.phase, countdown: this.countdown, nextId: this.nextId,
       towers: this.towers.map((t) => ({
-        def: t.def.id, c: t.c, r: t.r, tier: t.tier, cards: t.cards.map((c) => ({ ...c })), targetMode: t.targetMode, invested: t.invested,
+        def: t.def.id, c: t.c, r: t.r, tier: t.tier, level: t.level, cards: t.cards.map((c) => ({ ...c })), targetMode: t.targetMode, invested: t.invested,
         socketGold: t.socketGold, kills: t.kills, dmgTotal: t.dmgTotal, vars: t.rt ? [...t.rt.vars.entries()] : [],
       })),
     };
@@ -738,6 +776,7 @@ export class World {
       this.gold = g;
       if (typeof t === 'string') continue;
       t.tier = ts.tier as 1 | 2 | 3;
+      t.level = Math.max(1, Math.min(LEVELS.max, ts.level ?? 1));
       t.targetMode = ts.targetMode;
       t.invested = ts.invested;
       t.socketGold = ts.socketGold;
@@ -772,7 +811,7 @@ export interface WorldSave {
   countdown: number | null;
   nextId: number;
   towers: {
-    def: string; c: number; r: number; tier: number; cards: Card[]; targetMode: TargetMode; invested: number;
+    def: string; c: number; r: number; tier: number; level?: number; cards: Card[]; targetMode: TargetMode; invested: number;
     socketGold: number; kills: number; dmgTotal: number; vars: [string, number][];
   }[];
 }

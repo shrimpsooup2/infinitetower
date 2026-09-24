@@ -6,7 +6,7 @@ import { dispatch, dispatchNth, dispatchConduits, fireRule, makeCtx, resolveVfx,
 import { applyStatus, dealDamage, pathOf } from './combat.ts';
 import { makeProjectile, spawnBaseDrone, chassisCtx, canHit } from './entities.ts';
 import { BUILTIN_STATUS_DEFS } from './statuses.ts';
-import { ATTACK_EVENT_MIN } from '../content/towers.ts';
+import { ATTACK_EVENT_MIN, LEVELS } from '../content/towers.ts';
 import { DAMAGE_COLORS } from '../content/colors.ts';
 import { angleDiff, dist2, segDist2, turnToward } from './math.ts';
 import { RULES } from '../content/rules.ts';
@@ -18,7 +18,7 @@ export function baseStats(t: Tower): TowerStats {
   const d = t.def;
   const i = t.tier - 1;
   return {
-    damage: d.damage[i],
+    damage: d.damage[i] * (1 + LEVELS.damage * (t.level - 1)),
     rate: d.rate[i],
     range: d.range[i],
     splash: d.splash?.[i] ?? 0,
