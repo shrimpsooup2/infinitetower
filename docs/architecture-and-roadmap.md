@@ -140,12 +140,19 @@ tools/            bot (playtest), strategist (planning bot), record (video of a 
   copies of the game:
   - It lists candidate moves: each promising tower type on its best tile (the one whose range
     covers the most road or air lane), tier upgrades, levels, and sockets for its best cards.
-  - It first plays the coming wave at its real HP. That copy is exactly what will happen, so
-    if the wave would leak, stopping that comes first.
-  - Otherwise it raises enemy HP until the defence starts to bend (×1.5 and up) and buys
-    margin there, so the defence holds for the waves after.
+  - Each step it picks what to plan against, in order:
+    1. the coming wave at its real HP, if it would leak (that copy is exactly what will
+       happen);
+    2. the coming wave with 1.5× HP, if that would leak;
+    3. a boss due within five waves, played now against the current defence, if it would
+       get through (bosses need building for well ahead);
+    4. the coming wave at the HP where the defence starts to bend, to buy margin.
   - Each step it makes the move that cuts the threat most per gold. The threat counts lives
-    lost, then how far shapes got down the road.
+    lost, then how much health the shapes that got through still had, then how far shapes
+    got down the road. The copies have lives to spare, so a copy that would lose the game
+    still shows how badly.
+  - For a loss it reports how close it was: the share of the killing wave's HP at which
+    its last defence would have held.
   - It shops for packs when it has open sockets and nothing to put in them, and it calls every
     wave at once for the early-call bonus.
   - `--trace` prints its moves per wave and checks each prediction against what happened.
