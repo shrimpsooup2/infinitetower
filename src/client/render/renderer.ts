@@ -9,6 +9,7 @@ import { resolveVfx } from '../../effects/runtime.ts';
 import { Fx, drawBeam, drawLoop, resolve, type BeamLook, type Cam } from './fx.ts';
 import { drawTower, bodyRadius } from './tower-art.ts';
 import { drawEnemyBody } from './enemy-art.ts';
+import { drawAmbient, drawScenery } from './scenery.ts';
 import {
   circlePath, fillStroke, lerpHex, outlinedText, polyPath, rgba, roundRectPath, shapePath, softSprite, quant, type Ctx2D,
 } from './draw.ts';
@@ -103,91 +104,7 @@ export class Renderer {
     const g = c.getContext('2d')!;
     g.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     const { s, ox, oy } = this.cam;
-    const W = this.canvas.width / this.dpr, H = this.canvas.height / this.dpr;
-    // Outside the arena: darker grey with grid (like diep's out-of-bounds).
-    g.fillStyle = PAL.outside;
-    g.fillRect(0, 0, W, H);
-    g.strokeStyle = 'rgba(0,0,0,0.06)';
-    g.lineWidth = 1;
-    g.beginPath();
-    for (let x = ox % s; x < W; x += s) { g.moveTo(Math.round(x) + 0.5, 0); g.lineTo(Math.round(x) + 0.5, H); }
-    for (let y = oy % s; y < H; y += s) { g.moveTo(0, Math.round(y) + 0.5); g.lineTo(W, Math.round(y) + 0.5); }
-    g.stroke();
-    // Arena.
-    g.fillStyle = PAL.bg;
-    g.fillRect(ox, oy, w.cols * s, w.rows * s);
-    g.strokeStyle = PAL.grid;
-    g.beginPath();
-    for (let c2 = 0; c2 <= w.cols; c2++) { g.moveTo(ox + c2 * s + 0.5, oy); g.lineTo(ox + c2 * s + 0.5, oy + w.rows * s); }
-    for (let r = 0; r <= w.rows; r++) { g.moveTo(ox, oy + r * s + 0.5); g.lineTo(ox + w.cols * s, oy + r * s + 0.5); }
-    g.stroke();
-    // Air lanes.
-    g.setLineDash([s * 0.25, s * 0.35]);
-    g.strokeStyle = 'rgba(80,140,160,0.22)';
-    g.lineWidth = Math.max(1.5, s * 0.06);
-    for (const p of w.air) {
-      g.beginPath();
-      g.moveTo(ox + p.xs[0] * s, oy + p.ys[0] * s);
-      for (let i = 1; i < p.xs.length; i++) g.lineTo(ox + p.xs[i] * s, oy + p.ys[i] * s);
-      g.stroke();
-    }
-    g.setLineDash([]);
-    // Ground paths: a slightly darker band with a soft edge.
-    g.lineCap = 'square';
-    g.lineJoin = 'miter';
-    for (const pass of [{ w: 1.0, c: 'rgba(0,0,0,0.07)' }, { w: 0.86, c: '#c3c3c3' }]) {
-      g.strokeStyle = pass.c;
-      g.lineWidth = s * pass.w;
-      for (const p of w.paths) {
-        g.beginPath();
-        g.moveTo(ox + p.xs[0] * s, oy + p.ys[0] * s);
-        for (let i = 1; i < p.xs.length; i++) g.lineTo(ox + p.xs[i] * s, oy + p.ys[i] * s);
-        g.stroke();
-      }
-    }
-    // Direction chevrons.
-    g.strokeStyle = 'rgba(0,0,0,0.08)';
-    g.lineWidth = Math.max(1.5, s * 0.07);
-    g.lineCap = 'round';
-    for (const p of w.paths) {
-      const tmp = { x: 0, y: 0, ang: 0 };
-      for (let d = 1.5; d < p.length - 0.5; d += 2.5) {
-        p.at(d, tmp);
-        const x = ox + tmp.x * s, y = oy + tmp.y * s, a = tmp.ang, k = s * 0.16;
-        g.beginPath();
-        g.moveTo(x - Math.cos(a - 0.9) * k, y - Math.sin(a - 0.9) * k);
-        g.lineTo(x, y);
-        g.lineTo(x - Math.cos(a + 0.9) * k, y - Math.sin(a + 0.9) * k);
-        g.stroke();
-      }
-    }
-    // Team bases: enemy spawn (red) and your base (blue), as in diep team modes.
-    const base = (px: number, py: number, color: string) => {
-      const cx = Math.min(w.cols - 0.5, Math.max(0.5, px)), cy = Math.min(w.rows - 0.5, Math.max(0.5, py));
-      g.fillStyle = rgba(color, 0.22);
-      g.fillRect(ox + (cx - 1) * s, oy + (cy - 1) * s, s * 2, s * 2);
-    };
-    const spawns = new Set<string>();
-    for (const p of w.paths) {
-      const k = `${p.xs[0]},${p.ys[0]}`;
-      if (!spawns.has(k)) {
-        spawns.add(k);
-        base(p.xs[0], p.ys[0], PAL.red);
-      }
-    }
-    const exits = new Set<string>();
-    for (const p of w.paths) {
-      const k = `${p.xs[p.xs.length - 1]},${p.ys[p.ys.length - 1]}`;
-      if (exits.has(k)) continue;
-      exits.add(k);
-      base(p.xs[p.xs.length - 1], p.ys[p.ys.length - 1], PAL.blue);
-    }
-    // Rocks.
-    for (const [c2, r] of w.map.blocked) {
-      const x = ox + (c2 + 0.5) * s, y = oy + (r + 0.5) * s;
-      polyPath(g, x, y, s * 0.42, 6, (c2 * 7 + r * 3) % 6);
-      fillStroke(g, '#aaaaaa', Math.max(1.5, s * 0.06), '#8a8a8a');
-    }
+    drawScenery(g, w.map, { s, ox, oy, W: this.canvas.width / this.dpr, H: this.canvas.height / this.dpr });
     this.bg = c;
   }
 
@@ -259,6 +176,8 @@ export class Renderer {
     this.buildBackground(w);
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.drawImage(this.bg!, 0, 0);
+    ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    drawAmbient(ctx, w.map, this.cam, this.time);
     const [sx, sy] = this.fx.shakeOffset();
     ctx.setTransform(this.dpr, 0, 0, this.dpr, sx * this.cam.s * this.dpr, sy * this.cam.s * this.dpr);
     const cam = this.cam;

@@ -133,6 +133,10 @@ cards cost more. The rarity markup is biggest in the base slot, where a card car
 | Epic | 240 (×3) | 480 (×2) | 1,010 (×1.4) |
 | Legendary | 400 (×5) | 720 (×3) | 1,295 (×1.8) |
 
+Those are wave-1 prices. Socket prices also rise as a run goes on, and faster for rarer cards
+(+2% per wave for Common, +3% Rare, +4.5% Epic, +6.5% Legendary), because gold income grows
+too. By wave 60 a Legendary card in the tertiary slot costs about 6,300 gold.
+
 So a Legendary is worth saving for the right tower and the moment you can afford it. The hand
 shows each card's price for the selected tower.
 
@@ -226,18 +230,26 @@ modifiers.
 
 ## 6. Campaign, maps and difficulty
 
-Three acts of three maps each on a 24 × 14 grid. Beating a map unlocks the next one.
+Three acts of five maps each. Beating a map unlocks the next one. Maps grow as the campaign
+goes on, from 20 × 12 tiles to 30 × 17, and so does their look: the first maps are plain grey
+arenas, and later ones are drawn in richer themes.
 
-| Act | Maps | Waves | Shapes |
-| --- | --- | --- | --- |
-| I · Flatland | Meadow, Switchback, Crossroads | 20 | 2D |
-| II · Solidspace | Skyway, Fork, Spiral | 40 | 2D, then 3D |
-| III · Hyperspace | Twin Rivers, Gauntlet, Tesseract | 60 | 2D, 3D, then 4D |
+| Act | Maps (theme) | Size | Waves | Shapes |
+| --- | --- | --- | --- | --- |
+| I · Flatland | Meadow, Switchback (plain), Crossroads, Loopback (graph paper), Orchard (garden) | 20 × 12 to 26 × 14 | 20 | 2D |
+| II · Solidspace | Skyway, Fork (blueprint), Dunes (desert), Spiral, Geode (crystal cavern) | 26 × 15 to 28 × 16 | 40 | 2D, then 3D |
+| III · Hyperspace | Twin Rivers, Gauntlet (neon grid), Nebula, Event Horizon (deep space), Tesseract (hyperspace) | 26 × 15 to 30 × 17 | 60 | 2D, 3D, then 4D |
 
-The maps stress different things: a gentle serpentine, a long zig-zag, merging spawns, heavy
-air traffic, a road that splits and rejoins, an inward spiral, two separate roads with two
-exits, a short road through rocks, and a road that folds back through itself. After the last
-wave you can keep going in endless mode.
+A theme sets the ground and its pattern, the road style, the obstacles (rocks, sketched
+blocks, bushes, wireframe cubes, mesas, crystals, neon pillars, asteroids, hypercubes), small
+scatter such as grass tufts, cacti or stars, props around the arena, and ambient motion
+(fireflies, drifting motes, twinkling stars, a scan line). Themes only change the look, never
+the rules.
+
+The maps stress different things: gentle serpentines and long zig-zags, merging spawns, a
+road that crosses itself, heavy air traffic, a road that splits and rejoins, an inward spiral,
+two separate roads with two exits, a short road through rocks, a long comb of a road, and a
+road that folds back through itself. After the last wave you can keep going in endless mode.
 
 | Difficulty | Enemy HP | Lives | Starting gold | Bounty |
 | --- | --- | --- | --- | --- |
@@ -248,8 +260,9 @@ wave you can keep going in endless mode.
 
 **Tuning target:** the playtest bot (`tools/bot.ts`) builds greedily, sockets its best
 cards, keeps the rarest card from each pack, never shops, and gets fusions only from the
-offline combiner. On Casual it clears most Act I runs. On Normal it usually loses to the
-Act I final boss, falls somewhere in Act II, and falls in Act III around the 3D → 4D line. Players
+offline combiner. On Casual it clears every Act I map. On Normal it wins about half its Act I
+runs, usually falls to the wave-20 boss (the Circle) in Act III, and falls between waves 20
+and 30 in Act II. Players
 who pick their cards with a plan and design fusions that really synergise should get much
 further.
 

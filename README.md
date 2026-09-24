@@ -21,7 +21,7 @@ number. From then on, every player who makes that combination gets the same fusi
 - **Shapes that climb through dimensions.** The first 20 waves are 2D polygons (triangle to
   tetradecagon), then 3D polyhedra rendered like early-2000s CG, then 4D polytopes that phase in
   and out of reach.
-- **A complete game on its own.** It has a guided tutorial, a 3-act campaign of 9 maps, 4
+- **A complete game on its own.** It has a guided tutorial, a 3-act campaign of 15 themed maps, 4
   difficulties and endless mode. Without an LLM it still works, using offline fusions.
 
 ## Quick start

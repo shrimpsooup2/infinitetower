@@ -755,7 +755,7 @@ export class Game {
       const next = i === t.cards.length;
       return h('div', { class: `socket ${locked ? 'locked' : ''}` },
         h('span', { class: 'role' }, SOCKET_ROLE[i]),
-        locked ? h('span', null, `Tier ${i + 1}`) : next ? h('span', null, `${SOCKET_COST[i]}g+`) : h('span', null, '—'),
+        locked ? h('span', null, `Tier ${i + 1}`) : next ? h('span', null, `${w.socketCost(t, 0) ?? SOCKET_COST[i]}g+`) : h('span', null, '—'),
       );
     }));
     // Preview of what a hovered card would make (only if YOU have made it before).

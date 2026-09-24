@@ -133,6 +133,8 @@ export interface MapDef {
   /** Campaign act (1 Flatland, 2 Solidspace, 3 Hyperspace) and run length. */
   act: 1 | 2 | 3;
   waves: number;
+  /** Look of the map (see client/render/scenery.ts); purely visual. Defaults to 'plain'. */
+  theme?: string;
 }
 
 export interface SpawnGroup {

@@ -16,13 +16,18 @@ export interface RarityDef {
    * shrinks there (see SOCKET_RARITY_WEIGHT).
    */
   socketMult: number;
+  /**
+   * Socket prices rise as a run goes on and income grows: +this fraction of the
+   * price per wave. Rarer cards climb faster, so hoarding them gets expensive.
+   */
+  socketGrowth: number;
 }
 
 export const RARITIES: RarityDef[] = [
-  { id: 'common', name: 'Common', color: '#b8b8b8', mult: 1, socketMult: 1 },
-  { id: 'rare', name: 'Rare', color: '#00b2e1', mult: 1.2, socketMult: 2 },
-  { id: 'epic', name: 'Epic', color: '#bf7ff5', mult: 1.45, socketMult: 3 },
-  { id: 'legendary', name: 'Legendary', color: '#ffc629', mult: 1.75, socketMult: 5 },
+  { id: 'common', name: 'Common', color: '#b8b8b8', mult: 1, socketMult: 1, socketGrowth: 0.02 },
+  { id: 'rare', name: 'Rare', color: '#00b2e1', mult: 1.2, socketMult: 2, socketGrowth: 0.03 },
+  { id: 'epic', name: 'Epic', color: '#bf7ff5', mult: 1.45, socketMult: 3, socketGrowth: 0.045 },
+  { id: 'legendary', name: 'Legendary', color: '#ffc629', mult: 1.75, socketMult: 5, socketGrowth: 0.065 },
 ];
 
 /**

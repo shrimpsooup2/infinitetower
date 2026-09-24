@@ -298,13 +298,16 @@ export class World {
   /**
    * Gold to socket a card of this rarity into the tower's next slot. The slot
    * price climbs steeply; the rarity markup is biggest in the base slot and
-   * tapers off in later slots, where a card carries less of the fusion.
+   * tapers off in later slots, where a card carries less of the fusion. Prices
+   * also rise every wave as income grows, fastest for the rarest cards.
    */
   socketCost(t: Tower, rarity = 0): number | null {
     const i = t.sockets.length;
     if (i >= 3) return null;
-    const markup = 1 + ((RARITIES[rarity]?.socketMult ?? 1) - 1) * SOCKET_RARITY_WEIGHT[i];
-    return Math.round((SOCKET_COST[i] * markup) / 5) * 5;
+    const r = RARITIES[rarity] ?? RARITIES[0];
+    const markup = 1 + (r.socketMult - 1) * SOCKET_RARITY_WEIGHT[i];
+    const stage = 1 + r.socketGrowth * Math.max(0, this.waveN - 1);
+    return Math.round((SOCKET_COST[i] * markup * stage) / 5) * 5;
   }
 
   /** Why a power cannot be socketed right now, or null if it can. */

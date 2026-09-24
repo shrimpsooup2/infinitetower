@@ -22,7 +22,7 @@ function digest(w: World): string {
 
 function scripted(seed: number): World {
   const w = new World({ map: meadow, difficulty: 'normal', seed, startGold: 5000 });
-  const a = w.place('bolt', 5, 4);
+  const a = w.place('bolt', 7, 4);
   const b = w.place('cannon', 7, 6);
   if (typeof a === 'string' || typeof b === 'string') throw new Error('placement failed');
   w.upgrade(a.id);
@@ -74,7 +74,7 @@ test('losing your last life on the final wave is a defeat, not a victory', () =>
 test('every tower with every single power runs without errors', () => {
   for (const t of TOWERS) {
     const w = new World({ map: meadow, difficulty: 'normal', seed: 9, startGold: 1e6 });
-    const tw = w.place(t.id, 5, 4);
+    const tw = w.place(t.id, 7, 4);
     if (typeof tw === 'string') throw new Error(tw);
     w.upgrade(tw.id);
     w.upgrade(tw.id);

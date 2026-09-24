@@ -247,13 +247,14 @@ canvas#game { position: fixed; inset: 0; display: block; }
 .act h2 { margin: 0 0 6px; font-size: 22px; text-shadow: var(--outline); }
 .act .blurb { font-size: 13px; text-shadow: var(--outline); margin-bottom: 8px; opacity: 0.9; }
 .maps { display: flex; gap: 10px; flex-wrap: wrap; }
-.mapcard { width: 300px; border-radius: 10px; padding: 8px; background: var(--panel-strong); cursor: pointer; border: 3px solid transparent; }
+.mapcard { width: 188px; border-radius: 10px; padding: 8px; background: var(--panel-strong); cursor: pointer; border: 3px solid transparent; }
+.mapcard .theme { font-size: 11px; opacity: 0.75; text-shadow: var(--outline); }
 .mapcard.sel { border-color: #fff; }
 .mapcard.locked { cursor: not-allowed; background: rgba(30, 30, 30, 0.7); }
 .mapcard.locked canvas { filter: grayscale(1) brightness(0.75); }
 .mapcard.locked .nm, .mapcard.locked .meta { opacity: 0.65; }
 .mapcard canvas { display: block; width: 100%; border-radius: 6px; }
-.mapcard .nm { font-size: 17px; text-shadow: var(--outline); margin-top: 4px; }
+.mapcard .nm { font-size: 15px; text-shadow: var(--outline); margin-top: 4px; }
 .mapcard .meta { font-size: 12px; opacity: 0.9; text-shadow: var(--outline); }
 .stars { color: var(--gold); }
 .diffs { display: flex; gap: 6px; }

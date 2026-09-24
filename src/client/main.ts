@@ -15,9 +15,8 @@ import { describeSpec } from '../effects/describe.ts';
 import { PAL } from '../content/colors.ts';
 import { drawEnemyBody } from './render/enemy-art.ts';
 import { towerIcon } from './render/tower-art.ts';
-import { Path } from '../sim/path.ts';
 import { colorsFor } from '../sim/world.ts';
-import { polyPath, fillStroke } from './render/draw.ts';
+import { drawScenery } from './render/scenery.ts';
 import type { DifficultyDef, MapDef } from '../sim/types.ts';
 
 class Attract {
@@ -75,6 +74,7 @@ class Attract {
   }
 }
 
+/** A small picture of a map in its theme, for the campaign screen. */
 function mapPreview(m: MapDef, w: number): HTMLCanvasElement {
   const c = document.createElement('canvas');
   const dpr = Math.min(2, window.devicePixelRatio || 1);
@@ -84,41 +84,7 @@ function mapPreview(m: MapDef, w: number): HTMLCanvasElement {
   c.height = Math.round(hgt * dpr);
   const g = c.getContext('2d')!;
   g.scale(dpr, dpr);
-  g.fillStyle = PAL.bg;
-  g.fillRect(0, 0, w, hgt);
-  g.strokeStyle = 'rgba(0,0,0,0.07)';
-  g.beginPath();
-  for (let x = 0; x <= m.cols; x++) { g.moveTo(x * s, 0); g.lineTo(x * s, hgt); }
-  for (let y = 0; y <= m.rows; y++) { g.moveTo(0, y * s); g.lineTo(w, y * s); }
-  g.stroke();
-  g.setLineDash([s * 0.3, s * 0.4]);
-  g.strokeStyle = 'rgba(80,140,160,0.35)';
-  g.lineWidth = Math.max(1, s * 0.12);
-  for (const p of m.air) {
-    g.beginPath();
-    p.forEach(([cx, cy], i) => (i ? g.lineTo((cx + 0.5) * s, (cy + 0.5) * s) : g.moveTo((cx + 0.5) * s, (cy + 0.5) * s)));
-    g.stroke();
-  }
-  g.setLineDash([]);
-  for (const p of m.paths) {
-    const path = new Path(p.map(([cx, cy]) => [cx + 0.5, cy + 0.5] as [number, number]));
-    g.strokeStyle = '#b5b5b5';
-    g.lineWidth = s * 0.8;
-    g.lineCap = 'square';
-    g.beginPath();
-    path.xs.forEach((x, i) => (i ? g.lineTo(x * s, path.ys[i] * s) : g.moveTo(x * s, path.ys[i] * s)));
-    g.stroke();
-    const sx = Math.min(m.cols - 1, Math.max(0, path.xs[0] - 0.5)), sy = Math.min(m.rows - 1, Math.max(0, path.ys[0] - 0.5));
-    g.fillStyle = 'rgba(241,78,84,0.4)';
-    g.fillRect(sx * s - s * 0.5, sy * s - s * 0.5, s * 2, s * 2);
-    const ex = Math.min(m.cols - 1, Math.max(0, path.xs[path.xs.length - 1] - 0.5)), ey = Math.min(m.rows - 1, Math.max(0, path.ys[path.ys.length - 1] - 0.5));
-    g.fillStyle = 'rgba(0,178,225,0.4)';
-    g.fillRect(ex * s - s * 0.5, ey * s - s * 0.5, s * 2, s * 2);
-  }
-  for (const [bx, by] of m.blocked) {
-    polyPath(g, (bx + 0.5) * s, (by + 0.5) * s, s * 0.42, 6, 0.3);
-    fillStroke(g, '#aaaaaa', 1, '#8a8a8a');
-  }
+  drawScenery(g, m, { s, ox: 0, oy: 0, W: w, H: hgt });
   c.style.width = `${w}px`;
   c.style.height = `${hgt}px`;
   return c;
@@ -213,7 +179,7 @@ class App {
             const mp = p.maps[m.id];
             const wins = DIFFICULTIES.filter((d) => mp?.won[d.id]).map((d) => d.name);
             return h('div', { class: `mapcard ${this.selMap === m.id ? 'sel' : ''} ${unlocked ? '' : 'locked'}`, on: { click: () => { if (unlocked) { this.selMap = m.id; render(); } } } },
-              mapPreview(m, 284),
+              mapPreview(m, 172),
               h('div', { class: 'row' }, h('span', { class: 'nm grow' }, m.name), h('span', { class: 'stars' }, '★'.repeat(m.difficulty) + '☆'.repeat(5 - m.difficulty))),
               h('div', { class: 'meta' }, unlocked ? `${m.waves} waves · best ${mp?.best ?? 0}${wins.length ? ` · beaten on ${wins.join(', ')}` : ''}` : 'Locked'),
             );

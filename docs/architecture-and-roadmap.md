@@ -32,7 +32,7 @@ src/
                   vfxlib (41 recipes), describe (spec -> English), lint, combiner (offline
                   fusions), keys
   content/        towers, powers (40 hand-made specs), enemies (2D / 3D / 4D and bosses),
-                  waves (budget generator), maps (9 + tutorial), packs, rarity, rules
+                  waves (budget generator), maps (15 + tutorial), packs, rarity, rules
                   (difficulties, economy), twists, colours
   balance/        bench: benchmark scenarios and the potency solver
   server/         app (HTTP, static + TS stripping, API, rate limit), db (store interface +
@@ -40,8 +40,9 @@ src/
                   forge/ (prompt, examples, llm, pipeline, balancer, balance-worker), main
   client/         main (title, campaign, codex, settings), game (loop, input, HUD, packs,
                   hand, side panel), tutorial, forge client, storage, audio,
-                  render/ (renderer, fx, draw, tower-art, enemy-art, geometry, pack-art), ui/dom
-tests/            effects, sim, forge (node:test)
+                  render/ (renderer, fx, draw, scenery, tower-art, enemy-art, geometry, pack-art),
+                  ui/dom
+tests/            effects, sim, maps, forge, deploy, store (node:test)
 tools/            bot (playtest), pregen (seed the database), screenshot (Playwright)
 ```
 
@@ -67,8 +68,11 @@ tools/            bot (playtest), pregen (seed the database), screenshot (Playwr
 
 ## 4. Rendering
 
-- A cached background layer holds the grid, arena, road with chevrons, spawn and exit bases,
-  and rocks. Entities are drawn each frame, interpolated between sim steps.
+- A cached background layer (`scenery.ts`) draws the map in its theme: the surroundings and
+  props around the arena, the ground pattern, the road, the spawn and exit bases, and the
+  obstacles. A light ambient layer (fireflies, motes, stars, a scan line) is drawn over it each
+  frame. Placement is seeded by the map, so a map always looks the same. Entities are drawn
+  each frame, interpolated between sim steps.
 - The Fx system is a pooled particle system plus beams, shapes, orbiters and text. It
   interprets the VFX language directly, so model-designed looks need no new code.
 - **Towers** (`tower-art.ts`) are inked plinth-and-head emplacements, drawn procedurally per
@@ -87,7 +91,7 @@ tools/            bot (playtest), pregen (seed the database), screenshot (Playwr
 
 ## 5. Testing and tuning
 
-- `npm test` runs 29 cases:
+- `npm test` runs 33 cases:
   - every authored spec validates;
   - the validator survives 2,000 random fuzz specs;
   - 300 random offline fusions validate;
@@ -96,6 +100,8 @@ tools/            bot (playtest), pregen (seed the database), screenshot (Playwr
   - a final-wave leak is a defeat;
   - all 400 tower × power pairs run;
   - wave and pack rules hold;
+  - every map is well formed (straight roads inside the grid, obstacles off the road, a known
+    theme) and plays its first wave;
   - polytope vertex, edge and face counts (and Euler's formula) are right;
   - the forge works end to end with the mock model, including numbering, World Firsts,
     lineage, the provisional fallback and the HTTP API;
@@ -139,7 +145,7 @@ Built:
 
 - simulation, effect and VFX language, 10 towers, 40 powers;
 - enemies across 2D, 3D and 4D, 6 bosses;
-- 9-map campaign, 4 difficulties, endless mode;
+- a 15-map campaign in 9 visual themes, 4 difficulties, endless mode;
 - card packs, rarities and exclusive powers;
 - the forge with Ollama, validation, lint, novelty, balance by simulation and lineage;
 - discovery numbers, World Firsts, the local Codex;
