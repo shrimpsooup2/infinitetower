@@ -159,8 +159,11 @@ tools/            bot (playtest), strategist (planning bot), record (video of a 
     wave at once for the early-call bonus.
   - `--trace` prints its moves per wave and checks each prediction against what happened.
   - `--record run.json` saves the game. `npm run record -- run.json` then replays it in the
-    real client in headless Chromium and saves a video (`.webm`), with a caption listing the
-    moves. It checks the replay in Node first, and runs 2 to 8 times faster than real time.
+    real client in headless Chromium and saves a video (`.webm`) and a poster still, with a
+    caption listing the moves. The tower panel shows each tower the bot changes, then its
+    top damage dealers in turn (`--no-panel` to hide it; `--size 1600x900` for more room).
+    It checks the replay in Node first, and runs 2 to 8 times faster than real time
+    (`--speed` to choose).
 - `tools/screenshot.ts` drives every screen in headless Chromium, including a gallery of every
   3D, 4D and boss shape, and reports page errors.
 

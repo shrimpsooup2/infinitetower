@@ -2,13 +2,16 @@
 // headless Chromium, and saves it as a video.
 //
 //   node tools/strategist.ts meadow hard 1 --record run.json
-//   node tools/record.ts run.json [out.webm] [--speed 4]   (needs `playwright` installed)
+//   node tools/record.ts run.json [out.webm] [--speed 4] [--size 1600x900] [--no-panel]
+//   (needs `playwright` installed)
 //
 // The world is deterministic, so the client plays the same game when it starts
 // from the recorded state and makes the recorded calls at the recorded ticks.
 // A Node replay checks that first. The client builds without API_BASE, so it
 // uses offline fusions, the same ones the Strategist planned with. A caption
-// in the corner lists the bot's moves as it makes them.
+// in the corner lists the bot's moves as it makes them, and the tower panel
+// shows the tower it just changed, then its best towers in turn (--no-panel
+// leaves nothing selected).
 
 import { createServer } from 'node:http';
 import { execFileSync } from 'node:child_process';
@@ -28,6 +31,9 @@ const flag = (name: string, dflt: string) => {
   return i >= 0 ? args.splice(i, 2)[1] : dflt;
 };
 const speedArg = flag('speed', '');
+const [vw, vh] = flag('size', '1280x720').split('x').map(Number);
+const panel = !args.includes('--no-panel');
+if (!panel) args.splice(args.indexOf('--no-panel'), 1);
 const [scriptPath, outArg] = args;
 if (!scriptPath) {
   console.error('usage: node tools/record.ts run.json [out.webm] [--speed 4]');
@@ -80,7 +86,7 @@ const port = (server.address() as { port: number }).port;
 const last = script.steps.at(-1)!.tick + 60 * 90;
 const speed = Number(speedArg || Math.max(2, Math.min(8, Math.ceil(last / 60 / 240))));
 const videoDir = mkdtempSync(join(tmpdir(), 'it-video-'));
-const size = { width: 1280, height: 720 };
+const size = { width: vw, height: vh };
 const browser = await chromium.launch();
 const context = await browser.newContext({ viewport: size, recordVideo: { dir: videoDir, size } });
 const page = await context.newPage();
@@ -108,7 +114,7 @@ await page.getByText(/^Continue/).click();
 await page.waitForFunction(() => !!(window as unknown as { __app: { game?: unknown } }).__app.game);
 
 const title = `Strategist bot · ${map.name} · ${DIFFICULTY_BY_ID.get(script.diff)!.name}`;
-await page.evaluate(([steps, title, speed]) => {
+await page.evaluate(([steps, title, speed, panel]) => {
   type W = Record<string, unknown> & {
     tick: number; gold: number; lives: number; waveN: number; phase: string;
     step(): void; towers: { id: number; def: { name: string }; tier: number; level: number }[];
@@ -122,7 +128,7 @@ await page.evaluate(([steps, title, speed]) => {
 
   // The caption: what the bot is doing, newest first.
   const box = document.createElement('div');
-  box.style.cssText = 'position:fixed;right:12px;top:56px;z-index:9999;width:280px;padding:10px 12px;border-radius:10px;background:rgba(10,12,20,.78);color:#e8ecf4;font:12px/1.45 system-ui,sans-serif;pointer-events:none;box-shadow:0 4px 16px rgba(0,0,0,.35)';
+  box.style.cssText = 'position:fixed;right:12px;bottom:12px;z-index:9999;width:280px;padding:10px 12px;border-radius:10px;background:rgba(10,12,20,.78);color:#e8ecf4;font:12px/1.45 system-ui,sans-serif;pointer-events:none;box-shadow:0 4px 16px rgba(0,0,0,.35)';
   const head = document.createElement('div');
   head.style.cssText = 'font-weight:700;font-size:13px;color:#ffd166;margin-bottom:4px';
   head.textContent = `${title} · ${speed}x`;
@@ -132,7 +138,7 @@ await page.evaluate(([steps, title, speed]) => {
   const said: string[] = [];
   const say = (s: string) => {
     said.unshift(s);
-    said.length = Math.min(said.length, 9);
+    said.length = Math.min(said.length, 6);
     lines.innerHTML = '';
     said.forEach((t, i) => {
       const d = document.createElement('div');
@@ -156,15 +162,33 @@ await page.evaluate(([steps, title, speed]) => {
     }
   };
 
+  // The tower panel: the tower the bot just changed, then its best towers in turn.
+  const pick = (t: unknown) => { if (panel && t) (g as unknown as { select(t: unknown): void }).select(t); };
+  let held = 0;
+  if (panel) {
+    let k = 0;
+    setInterval(() => {
+      if (performance.now() < held) return;
+      const top = [...w.towers].sort((a, b) => (b as unknown as { dmgTotal: number }).dmgTotal - (a as unknown as { dmgTotal: number }).dmgTotal).slice(0, 4);
+      if (top.length) pick(top[k++ % top.length]);
+    }, 4000);
+  }
   let i = 0;
   const bad: string[] = [];
   const due = () => {
     while (i < steps.length && w.tick === steps[i].tick) {
       const st = steps[i++];
+      let changed: unknown = null;
       for (const c of st.calls) {
         const s = describe(c);
-        (w[c[0]] as (...x: unknown[]) => unknown).apply(w, c.slice(1));
+        const r = (w[c[0]] as (...x: unknown[]) => unknown).apply(w, c.slice(1));
         if (s) say(s);
+        if (c[0] === 'place' && r && typeof r === 'object') changed = r;
+        else if (c[0] === 'upgrade' || c[0] === 'levelUp' || c[0] === 'socket') changed = tower(c[1]) ?? changed;
+      }
+      if (changed) {
+        pick(changed);
+        held = performance.now() + 5000;
       }
       if (Math.abs(w.gold - st.after.gold) > 1e-6 || w.lives !== st.after.lives) bad.push(`wave ${st.after.waveN}: gold ${w.gold} vs ${st.after.gold}, lives ${w.lives} vs ${st.after.lives}`);
     }
@@ -175,7 +199,7 @@ await page.evaluate(([steps, title, speed]) => {
   due();
   g.speed = speed;
   (window as unknown as { __rec: unknown }).__rec = { left: () => steps.length - i, phase: () => w.phase, wave: () => w.waveN, tick: () => w.tick, bad };
-}, [script.steps, title, speed] as const);
+}, [script.steps, title, speed, panel] as const);
 
 console.log(`recording ${title} at ${speed}x (about ${Math.round(last / 60 / speed)}s)...`);
 await page.evaluate(() => {
@@ -184,6 +208,7 @@ await page.evaluate(() => {
   const f = () => { r.frames++; requestAnimationFrame(f); };
   requestAnimationFrame(f);
 });
+let posted = false;
 for (let prev = { frames: 0, t: Date.now() }; ;) {
   await page.waitForTimeout(15_000);
   const r = await page.evaluate(() => {
@@ -193,6 +218,11 @@ for (let prev = { frames: 0, t: Date.now() }; ;) {
   const fps = ((r.frames - prev.frames) * 1000) / (Date.now() - prev.t);
   prev = { frames: r.frames, t: Date.now() };
   console.log(`  wave ${r.wave}, ${Math.round(r.tick / 60)}s of play, ${fps.toFixed(0)} fps${r.drift ? `, drifted on ${r.drift} waves` : ''}`);
+  // A still from about a third of the way in, as a poster for the video.
+  if (!posted && r.wave >= Math.ceil(script.steps.length / 3)) {
+    posted = true;
+    await page.screenshot({ path: out.replace(/\.webm$/, '') + '.png' });
+  }
   if (r.left === 0 && (r.phase === 'victory' || r.phase === 'defeat')) break;
 }
 await page.waitForTimeout(5000);
