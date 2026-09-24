@@ -15,10 +15,10 @@ export interface PackDef {
 }
 
 export const PACKS: PackDef[] = [
-  { id: 'starter', name: 'Starter Pack', blurb: 'Three cards to begin, one of them Rare or better.', floors: [0, 0, 1], color: '#8eb2ff', price: null, emblem: 'square' },
-  { id: 'shape', name: 'Shape Pack', blurb: 'Three cards. Better odds the further you get.', floors: [0, 0, 0], color: '#00b2e1', price: (w) => 140 + 22 * w, emblem: 'triangle' },
-  { id: 'prism', name: 'Prism Pack', blurb: 'Three cards, every one Rare or better.', floors: [1, 1, 1], color: '#bf7ff5', price: (w) => 380 + 50 * w, emblem: 'prism' },
-  { id: 'boss', name: 'Boss Pack', blurb: 'Four cards: all Rare or better, one Epic or better.', floors: [1, 1, 1, 2], color: '#ffd166', price: null, emblem: 'star' },
+  { id: 'starter', name: 'Starter Pack', blurb: 'Keep 1 of 3 cards; one is Rare or better.', floors: [0, 0, 1], color: '#8eb2ff', price: null, emblem: 'square' },
+  { id: 'shape', name: 'Shape Pack', blurb: 'Keep 1 of 3 cards. Better odds the further you get.', floors: [0, 0, 0], color: '#00b2e1', price: (w) => 90 + 14 * w, emblem: 'triangle' },
+  { id: 'prism', name: 'Prism Pack', blurb: 'Keep 1 of 3 cards, every one Rare or better.', floors: [1, 1, 1], color: '#bf7ff5', price: (w) => 240 + 32 * w, emblem: 'prism' },
+  { id: 'boss', name: 'Boss Pack', blurb: 'Keep 1 of 4 cards: all Rare or better, one Epic or better.', floors: [1, 1, 1, 2], color: '#ffd166', price: null, emblem: 'star' },
 ];
 
 export const PACK_BY_ID = new Map(PACKS.map((p) => [p.id, p]));

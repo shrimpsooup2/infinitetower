@@ -239,6 +239,8 @@ export class Game {
     if ((e.target as HTMLElement)?.tagName === 'INPUT') return;
     const k = e.key.toLowerCase();
     if (k === 'escape') {
+      // Modals have their own buttons; a pack must be picked from before it closes.
+      if (this.modalPause) return;
       if (this.placing || this.armed !== null || this.selected) this.cancel();
       else this.togglePause();
       return;
@@ -410,7 +412,7 @@ export class Game {
 
   private refreshPacks(): void {
     const w = this.w;
-    const key = `${w.packs.map((p) => p.uid).join(',')}:${Math.floor(w.gold / 20)}:${w.waveN}`;
+    const key = `${w.packs.map((p) => p.uid).join(',')}:${w.offer?.uid}:${Math.floor(w.gold / 20)}:${w.waveN}`;
     if (key === this.packKey) return;
     this.packKey = key;
     const counts = new Map<string, PackInst[]>();
@@ -422,31 +424,62 @@ export class Game {
         list.length > 1 ? h('span', { class: 'count' }, `x${list.length}`) : null,
       );
     });
+    // A pack that was opened but not picked from (e.g. after reloading) waits here.
+    const open = w.offer
+      ? h('div', { class: 'packstack opened', title: PACK_BY_ID.get(w.offer.type)!.name, on: { click: () => this.openPackModal(null) } },
+        drawPackArt(PACK_BY_ID.get(w.offer.type)!, 44, 60), h('span', { class: 'count' }, '!'))
+      : null;
     mount(this.el.packs,
+      open,
       ...stacks,
       h('button', { class: 'btn gold shopbtn', on: { click: () => this.openShop() } }, 'Shop'),
     );
   }
 
-  private openPackModal(pk: PackInst): void {
-    const def = PACK_BY_ID.get(pk.type)!;
+  /** Open a pack (or show the pending one when `pk` is null) and keep one of its cards. */
+  private openPackModal(pk: PackInst | null): void {
+    const w = this.w;
+    const type = pk?.type ?? w.offer?.type;
+    if (!type) return;
+    const def = PACK_BY_ID.get(type)!;
     this.modalPause = true;
     const art = drawPackArt(def, 150, 205);
     art.classList.add('packbig');
+    const pick = (cards: Card[], fresh: boolean) => {
+      let kept: Card | null = null;
+      const els = cards.map((c, i) => {
+        const el = this.bigCard(c, fresh ? i : 0);
+        el.classList.add('pickable');
+        el.addEventListener('click', () => {
+          if (kept) return;
+          const r = w.pickCard(c.uid);
+          if (typeof r === 'string') return;
+          kept = r;
+          this.d.audio.play('upgrade', 1.2 + c.rarity * 0.1);
+          els.forEach((x) => x.classList.add(x === el ? 'chosen' : 'gone'));
+          foot.replaceChildren(
+            w.packs.length ? h('button', { class: 'btn blue', on: { click: () => this.openPackModal(w.packs[0]) } }, `Open next (${w.packs.length})`) : '',
+            h('button', { class: 'btn green', on: { click: () => this.closeModal() } }, 'Done'),
+          );
+        });
+        return el;
+      });
+      const foot = h('div', { class: 'foot' });
+      mount(this.el.modal, h('div', { class: 'modal-bg' }, h('div', { class: 'modal' },
+        h('h1', null, def.name),
+        h('div', { class: 'subtitle' }, 'Keep one'),
+        h('div', { class: `draft ${fresh ? 'reveal' : ''}` }, ...els),
+        foot,
+      )));
+    };
+    if (!pk) return pick(w.offer!.cards, false);
     const open = () => {
-      const cards = this.w.openPack(pk.uid);
+      const cards = w.openPack(pk.uid);
       if (typeof cards === 'string') return this.closeModal();
       this.d.audio.play('whoosh', 0.8);
       const best = Math.max(...cards.map((c) => c.rarity));
       setTimeout(() => this.d.audio.play(best >= 3 ? 'fanfare' : 'chime', 1 + best * 0.12), 300);
-      mount(this.el.modal, h('div', { class: 'modal-bg' }, h('div', { class: 'modal' },
-        h('h1', null, def.name),
-        h('div', { class: 'draft reveal' }, ...cards.map((c, i) => this.bigCard(c, i))),
-        h('div', { class: 'foot' },
-          this.w.packs.length ? h('button', { class: 'btn blue', on: { click: () => this.openPackModal(this.w.packs[0]) } }, `Open next (${this.w.packs.length})`) : null,
-          h('button', { class: 'btn green', on: { click: () => this.closeModal() } }, 'Done'),
-        ),
-      )));
+      pick(cards, true);
     };
     mount(this.el.modal, h('div', { class: 'modal-bg', on: { click: (e: MouseEvent) => { if (e.target === e.currentTarget) this.closeModal(); } } }, h('div', { class: 'modal', style: { textAlign: 'center' } },
       h('h1', null, def.name),

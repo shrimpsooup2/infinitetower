@@ -46,7 +46,14 @@ function rankTiles(w: World): [number, number][] {
 }
 
 function act(w: World, tiles: [number, number][], state: { next: number }): void {
-  while (w.packs.length) w.openPack(w.packs[0].uid);
+  // Open every pack and keep its rarest card, preferring a power not already held.
+  while (w.packs.length || w.offer) {
+    const offered = w.offer?.cards ?? w.openPack(w.packs[0].uid);
+    if (typeof offered === 'string') break;
+    const held = new Set(w.cards.map((c) => c.power));
+    const best = [...offered].sort((a, b) => b.rarity - a.rarity || Number(held.has(a.power)) - Number(held.has(b.power)))[0];
+    w.pickCard(best.uid);
+  }
   // Keep a small hand of the best cards and scrap the rest for gold.
   const keep = Math.max(3, w.towers.length);
   if (w.cards.length > keep) {

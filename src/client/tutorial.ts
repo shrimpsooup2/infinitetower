@@ -77,10 +77,10 @@ const STEPS: Step[] = [
     done: (t) => t.w.towers.some((x) => x.tier >= 2),
   },
   {
-    text: () => 'You earned a card pack. Click it to open it.',
+    text: () => 'You earned a card pack. Open it and keep one of its cards.',
     anchor: () => '.packstack', side: 'above',
-    enter: (t) => { if (!t.w.packs.length && t.w.cards.length < 2) t.w.grantPack('starter'); },
-    done: (t) => t.w.cards.length >= 2 || t.w.towers.some((x) => x.sockets.length),
+    enter: (t) => { if (!t.w.packs.length && !t.w.offer && !t.w.cards.length) t.w.grantPack('starter'); },
+    done: (t) => t.w.cards.length >= 1 || t.w.towers.some((x) => x.sockets.length),
   },
   {
     text: () => 'Each card is a power. Its frame shows its rarity: Common, Rare (blue), Epic (purple) or Legendary (gold). Rarer cards make their power stronger, and the most exotic powers only come as rare cards.',
@@ -93,7 +93,13 @@ const STEPS: Step[] = [
     done: (t) => t.w.towers.some((x) => x.sockets.length >= 1),
   },
   {
-    text: (t) => (t.host.selected() ? 'Socket a second card into the same tower. Two powers in one tower fuse into a brand-new ability.' : 'Select your Bolt again, then socket a second card.'),
+    text: () => 'Another pack. Keep a second power.',
+    anchor: () => '.packstack', side: 'above',
+    enter: (t) => { if (!t.w.packs.length && !t.w.offer && !t.w.cards.length) t.w.grantPack('shape'); },
+    done: (t) => t.w.cards.length >= 1 || t.w.towers.some((x) => x.sockets.length >= 2),
+  },
+  {
+    text: (t) => (t.host.selected() ? 'Socket it into the same tower. Two powers in one tower fuse into a brand-new ability.' : 'Select your Bolt again, then socket the new card.'),
     anchor: handOrTower, side: 'above',
     enter: (t) => topUp(t, SOCKET_COST[1]),
     done: (t) => t.w.towers.some((x) => x.sockets.length >= 2),

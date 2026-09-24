@@ -109,7 +109,7 @@ test('hp budget keeps climbing', () => {
   assert.ok(hp(60) > hp(40) * 2, 'act 3 should be harder again');
 });
 
-test('packs respect rarity floors and exclusive powers', () => {
+test('packs respect rarity floors and exclusive powers, and you keep one card', () => {
   const w = new World({ map: meadow, difficulty: 'normal', seed: 77, packs: false });
   for (const def of PACKS) {
     for (let i = 0; i < 40; i++) {
@@ -121,8 +121,26 @@ test('packs respect rarity floors and exclusive powers', () => {
       const floors = [...def.floors].sort((a, b) => a - b);
       rar.forEach((r, j) => assert.ok(r >= floors[j], `${def.id}: rarity ${r} below floor ${floors[j]}`));
       for (const c of cards) assert.ok(c.rarity >= (POWER_MIN_RARITY[c.power] ?? 0), `${c.power} rolled at rarity ${c.rarity}`);
+      const hand = w.cards.length;
+      const kept = w.pickCard(cards[i % cards.length].uid);
+      assert.equal(typeof kept, 'object');
+      assert.equal(w.cards.length, hand + 1, 'exactly one card is kept');
+      assert.equal(w.offer, null);
     }
   }
+});
+
+test('an open pack must be picked from first, and survives a save', () => {
+  const w = new World({ map: meadow, difficulty: 'normal', seed: 5, packs: false });
+  const a = w.grantPack('shape'), b = w.grantPack('shape');
+  const offered = w.openPack(a.uid) as { uid: number }[];
+  assert.equal(typeof w.openPack(b.uid), 'string', 'second pack waits');
+  assert.equal(typeof w.pickCard(12345), 'string', 'only offered cards can be kept');
+  const w2 = new World({ map: meadow, difficulty: 'normal', seed: 5, packs: false });
+  w2.restore(w.snapshot());
+  assert.deepEqual(w2.offer?.cards.map((c) => c.uid), offered.map((c) => c.uid), 'no re-rolling by reloading');
+  assert.equal(typeof w2.pickCard(offered[1].uid), 'object');
+  assert.equal(w2.cards.length, 1);
 });
 
 test('polytope geometry has the textbook counts', () => {

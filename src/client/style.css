@@ -307,3 +307,10 @@ canvas#game { position: fixed; inset: 0; display: block; }
   .packtray { left: 78px; }
   .hand { left: 190px; }
 }
+
+/* Keep-one pack picks */
+.dcard.pickable { cursor: pointer; transition: transform 0.15s ease, opacity 0.3s ease, filter 0.3s ease; }
+.dcard.pickable:hover { transform: translateY(-6px) scale(1.03); }
+.dcard.chosen { transform: translateY(-10px) scale(1.08); box-shadow: 0 0 0 4px #fff, 0 0 24px 6px rgba(255, 255, 255, 0.6); }
+.dcard.gone { opacity: 0.25; filter: grayscale(1); transform: scale(0.92); pointer-events: none; }
+.packstack.opened { animation: legend 1.4s ease-in-out infinite; }

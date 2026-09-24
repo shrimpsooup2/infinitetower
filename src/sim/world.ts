@@ -74,6 +74,13 @@ export interface PackInst {
   wave: number;
 }
 
+/** An opened pack waiting for the player to keep one of its cards. */
+export interface PackOffer {
+  uid: number;
+  type: PackDef['id'];
+  cards: Card[];
+}
+
 export type Phase = 'build' | 'running' | 'victory' | 'defeat';
 
 export function colorsFor(sockets: readonly string[]): Palette3 {
@@ -123,6 +130,7 @@ export class World {
   phase: Phase = 'build';
   cards: Card[] = [];
   packs: PackInst[] = [];
+  offer: PackOffer | null = null;
   fx: FxEvent[] = [];
   fxOn: boolean;
   scheduled: unknown[] = [];
@@ -447,8 +455,9 @@ export class World {
     return pk;
   }
 
-  /** Open a pack: its cards go straight into the hand. Returns them for the reveal. */
+  /** Open a pack: its cards are offered, and the player keeps one (pickCard). */
   openPack(uid: number): Card[] | string {
+    if (this.offer) return 'Keep a card from the open pack first';
     const i = this.packs.findIndex((p) => p.uid === uid);
     if (i < 0) return 'No such pack';
     const [pk] = this.packs.splice(i, 1);
@@ -459,8 +468,19 @@ export class World {
       seen.add(c.power);
       return c;
     });
-    this.cards.push(...cards);
+    this.offer = { uid: pk.uid, type: pk.type, cards };
     return cards;
+  }
+
+  /** Keep one card from the open pack; the others are gone. */
+  pickCard(cardUid: number): Card | string {
+    const o = this.offer;
+    if (!o) return 'No open pack';
+    const c = o.cards.find((x) => x.uid === cardUid);
+    if (!c) return 'That card is not in the pack';
+    this.cards.push(c);
+    this.offer = null;
+    return c;
   }
 
   packPrice(type: PackDef['id']): number | null {
@@ -674,7 +694,8 @@ export class World {
     return {
       v: 1, map: this.map.id, difficulty: this.diff.id, seed: this.seed, rng: this.rng.state(), tick: this.tick,
       gold: this.gold, lives: this.lives, waveN: this.waveN, endless: this.endless, cards: this.cards.map((c) => ({ ...c })),
-      packs: this.packs.map((p) => ({ ...p })), stats: { ...this.stats },
+      packs: this.packs.map((p) => ({ ...p })), offer: this.offer ? { ...this.offer, cards: this.offer.cards.map((c) => ({ ...c })) } : null,
+      stats: { ...this.stats },
       phase: this.phase, countdown: this.countdown, nextId: this.nextId,
       towers: this.towers.map((t) => ({
         def: t.def.id, c: t.c, r: t.r, tier: t.tier, cards: t.cards.map((c) => ({ ...c })), targetMode: t.targetMode, invested: t.invested,
@@ -692,6 +713,7 @@ export class World {
     this.endless = s.endless;
     this.cards = s.cards.map((c) => ({ ...c }));
     this.packs = s.packs.map((p) => ({ ...p }));
+    this.offer = s.offer ? { ...s.offer, cards: s.offer.cards.map((c) => ({ ...c })) } : null;
     Object.assign(this.stats, s.stats);
     this.nextId = s.nextId;
     this.phase = s.phase === 'running' ? 'running' : s.phase;
@@ -734,6 +756,7 @@ export interface WorldSave {
   endless: boolean;
   cards: Card[];
   packs: PackInst[];
+  offer?: PackOffer | null;
   stats: World['stats'];
   phase: Phase;
   countdown: number | null;

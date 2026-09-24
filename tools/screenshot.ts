@@ -31,6 +31,9 @@ await shot('04-pack');
 await page.getByText('Open', { exact: true }).click();
 await wait(1600);
 await shot('05-pack-reveal');
+await page.locator('.dcard.pickable').first().click();
+await wait(400);
+await shot('05b-pack-kept');
 await page.getByText('Done', { exact: true }).click();
 
 // Drive the world directly to set up a busy scene.

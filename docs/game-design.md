@@ -40,7 +40,8 @@ compare fusions fairly.
 
 Ten towers, each with its own attack "chassis", so the same powers feel different on
 different towers. Every tower has 3 tiers. Upgrading raises its stats and opens the next card
-socket.
+socket. Upgrades are a real investment: tier 2 costs twice the tower's price and tier 3 four
+times (a Bolt is 100, then +200, then +400).
 
 | Tower | Chassis | Role | Cost | Air |
 | --- | --- | --- | --- | --- |
@@ -98,14 +99,19 @@ Rarity odds improve as the waves climb.
 
 ### 4.3 Packs
 
-| Pack | Cards | How you get it |
+**You keep one card from each pack.** Opening a pack flips its cards over one at a time, with
+the rarest card getting a fanfare. You pick one and the rest are gone, so cards are precious
+and every pick is a decision about which fusion to build next. An opened pack has to be
+picked from before another can be opened, and the choice is saved with the run, so reloading
+can't re-roll it.
+
+| Pack | Choose from | How you get it |
 | --- | --- | --- |
 | Starter | 3, one Rare+ | Start of every run |
-| Shape | 3, better odds later | Every 3 waves, or the Shop (140 + 22 × wave gold) |
-| Prism | 3, all Rare+ | Shop only (380 + 50 × wave gold) |
+| Shape | 3, better odds later | Every 3 waves, or the Shop (90 + 14 × wave gold) |
+| Prism | 3, all Rare+ | Shop only (240 + 32 × wave gold) |
 | Boss | 4, all Rare+, one Epic+ | Each boss defeated |
 
-Opening a pack flips its cards over one at a time, with the rarest card getting a fanfare.
 Unwanted cards can be **scrapped** from the hand (right-click) for 15 / 40 / 100 / 250 gold by
 rarity.
 
@@ -227,9 +233,11 @@ wave you can keep going in endless mode.
 | Brutal | ×1.65 | 10 | 250 | ×0.9 |
 
 **Tuning target:** the playtest bot (`tools/bot.ts`) builds greedily, sockets its best
-cards, and gets fusions only from the offline combiner. On Normal it should clear Act I, fall
-somewhere in Act II and fall in Act III around the 3D → 4D line. Players who design fusions
-that really synergise should get much further.
+cards, keeps the rarest card from each pack, never shops, and gets fusions only from the
+offline combiner. On Casual it clears Act I. On Normal it loses to the Act I final bosses on
+most maps, falls somewhere in Act II, and falls in Act III around the 3D → 4D line. Players
+who pick their cards with a plan and design fusions that really synergise should get much
+further.
 
 ---
 
@@ -257,16 +265,17 @@ highlight and waits until the player actually does each thing:
 3. Send the first wave.
 4. Towers fire on their own, and kills pay gold.
 5. Select the tower and upgrade it.
-6. Open a card pack.
+6. Open a card pack and keep one card.
 7. What cards and rarities are.
-8. Socket a card.
-9. Socket a second card: a fusion.
-10. The Forge, World Firsts and discovery numbers.
-11. Order matters (named using the player's own two cards).
-12. You can't preview a fusion until you've made it, and the Codex keeps what you make.
-13. Packs over time, the Shop, and scrapping.
-14. Hotkeys.
-15. Survive the remaining waves.
+8. Socket the card.
+9. Open a second pack and keep another power.
+10. Socket it too: a fusion.
+11. The Forge, World Firsts and discovery numbers.
+12. Order matters (named using the player's own two cards).
+13. You can't preview a fusion until you've made it, and the Codex keeps what you make.
+14. Packs over time, the Shop, and scrapping.
+15. Hotkeys.
+16. Survive the remaining waves.
 
 The tutorial can be skipped at any step. After it's finished it moves to the bottom of the
 title menu for replays. Nothing else in the UI carries instructional text.

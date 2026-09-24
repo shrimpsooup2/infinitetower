@@ -15,8 +15,9 @@ number. From then on, every player who makes that combination gets the same fusi
 - **Discovery numbers, no names.** Fusions are numbered and dated (Fusion #1,024, first forged
   12 Mar 2027). The first player to make one gets a *World First*. You can't preview a fusion
   until you've made it yourself, and the ones you've made are kept in your browser's Codex.
-- **Card packs with rarities.** Powers come as Common, Rare, Epic and Legendary cards. Rarer
-  cards are stronger, and the most exotic powers only come at high rarity.
+- **Card packs with rarities.** Powers come as Common, Rare, Epic and Legendary cards, and you
+  keep one card from each pack. Rarer cards are stronger, and the most exotic powers only come
+  at high rarity.
 - **Shapes that climb through dimensions.** The first 20 waves are 2D polygons (triangle to
   tetradecagon), then 3D polyhedra rendered like early-2000s CG, then 4D polytopes that phase in
   and out of reach.
