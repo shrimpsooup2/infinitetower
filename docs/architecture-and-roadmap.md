@@ -138,8 +138,10 @@ tools/            bot (playtest), strategist (planning bot), record (video of a 
 - `npm run strategist -- all hard 1` runs the **Strategist**, a planning bot that shows how
   far good play can get. The snapshot between waves is exact, so before each wave it plays
   copies of the game:
-  - It lists candidate moves: each promising tower type on its best tile (the one whose range
-    covers the most road or air lane), tier upgrades, levels, and sockets for its best cards.
+  - It lists candidate moves: every tower type on its best tile (the one whose range covers
+    the most road or air lane) and the most promising types on their second-best tile too,
+    tier upgrades, levels, and every card in hand into the busiest towers. Slows and amps
+    do little damage themselves but a lot against a boss, so no type is left out.
   - Each step it picks what to plan against, in order:
     1. the coming wave at its real HP, if it would leak (that copy is exactly what will
        happen);
@@ -153,6 +155,15 @@ tools/            bot (playtest), strategist (planning bot), record (video of a 
     wave's income would pay for, and saves for one when it is clearly better per gold
     (1.5×) than anything it can buy now. The copies have lives to spare, so a copy that would lose the game
     still shows how badly.
+  - The copies run on worker threads, one per core (`--threads`). After one full look at
+    every candidate, the next purchases only re-try the best eight (lazy greedy), with a
+    full look again every fourth purchase and before stopping on a stale ranking.
+  - It plays with a policy: how much margin to keep, how many waves ahead to prepare for a
+    boss, when to save, and how to weigh cost. When it loses, it goes back to an exact
+    save 5 to 10 waves earlier (depending on the policy) and plays on with a policy not
+    yet tried from there. After a boss loss it tries preparing earlier first. When every
+    policy fails from there, it goes back further. It keeps the best game (`--tries`,
+    8 by default).
   - For a loss it reports how close it was: the share of the killing wave's HP at which
     its last defence would have held.
   - It shops for packs when it has open sockets and nothing to put in them, and it calls every

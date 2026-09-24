@@ -5,16 +5,22 @@
 // a snapshot, and the simulation is deterministic, so every candidate move can
 // be tried on a copy of the game:
 //
-//   1. List candidate moves: build each tower type on its best tile (scored by
-//      how much road or air lane its range covers), upgrade a tower, level a
-//      busy tower, socket a card.
-//   2. For each, restore a copy, make the move, and play the coming wave with
-//      enemy HP raised (x1.5 by default, about three waves of growth), so the
-//      plan holds up for a while and not just for the next wave.
-//   3. Score the copy: lives lost count most, then how deep shapes got down
-//      the road (squared, weighted by the lives each would cost).
-//   4. Make the move that cuts that threat most per gold spent. Repeat until no
-//      move is worth its price, then call the wave at once (early-call bonus).
+//   1. List candidate moves: build each tower type on its best tiles (scored
+//      by how much road or air lane its range covers), upgrade a tower, level a
+//      busy tower, socket any card in hand into a busy tower.
+//   2. Pick what to plan against (see objective()): a leak in the coming wave,
+//      a boss due soon, or margin (the coming wave with more HP).
+//   3. For each move, restore a copy, make the move and play that wave. The
+//      copies run on worker threads, one per core.
+//   4. Make the move that cuts the threat most per gold. Repeat until no move
+//      is worth its price (or it is saving for a better one), then call the
+//      wave at once (early-call bonus).
+//
+// On top of that sits a search. The bot plays with a policy (how much margin
+// to keep, how early to prepare for bosses, whether to save, how to weigh cost).
+// When it loses, it goes back to an exact save a few waves earlier and plays on
+// with the next policy; when every policy fails from there, it goes back
+// further. It keeps the best game it found.
 //
 // Pack cards are kept by rarity and by a measured rating of each power on the
 // bot's own towers (the balance bench). When it has open sockets but nothing to
@@ -22,17 +28,21 @@
 // combiner (no LLM), which is weaker than forged fusions, so real play with
 // the Forge should do at least as well.
 //
-//   node tools/strategist.ts [maps] [difficulties] [seeds] [--stress 1.5] [--jobs 4]
+//   node tools/strategist.ts [maps] [difficulties] [seeds] [--jobs 4] [--tries 8]
 //     maps: a map id, a comma list, act1 | act2 | act3 | all
 //     difficulties: casual | normal | hard | brutal | all (or a comma list)
 //   node tools/strategist.ts tesseract brutal 1 --trace
 //   node tools/strategist.ts meadow hard 1 --record run.json [--seed 7919]
 //     (then: node tools/record.ts run.json, to watch it in the real client)
+//   --threads N  worker threads for one game (default: one per core; grid
+//                games run one thread each, --jobs at a time)
+//   --tries N    how many times a game may go back and try another policy (0 = never)
 
 import { fork } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
 import { availableParallelism } from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { Worker, isMainThread, parentPort, workerData } from 'node:worker_threads';
 import { World, type WorldSave } from '../src/sim/world.ts';
 import type { Card, DifficultyDef, MapDef } from '../src/sim/types.ts';
 import { MAPS, MAP_BY_ID } from '../src/content/maps.ts';
@@ -45,14 +55,38 @@ import { runScenario, SCENARIOS } from '../src/balance/bench.ts';
 
 type Diff = DifficultyDef['id'];
 
+/** How the bot plays; the search tries these in turn when a game goes wrong. */
+interface Policy {
+  name: string;
+  /** Extra enemy HP the coming wave must hold against before anything else. */
+  stress: number;
+  /** How many waves ahead a boss is prepared for. */
+  bossWindow: number;
+  /** Save for a move the next wave pays for when it is this much better per gold (Infinity: never). */
+  save: number;
+  /** Moves are ranked by gain / cost^exp: under 1 favours big moves, 1 is plain value for gold. */
+  exp: number;
+  /** How many waves before a loss the search goes back to when it tries this policy. */
+  back: number;
+}
+
+const POLICIES: Policy[] = [
+  { name: 'balanced', stress: 1.5, bossWindow: 5, save: 1.5, exp: 0.6, back: 5 },
+  { name: 'boss-first', stress: 1.5, bossWindow: 10, save: 1.3, exp: 0.6, back: 10 },
+  { name: 'safe', stress: 2.2, bossWindow: 6, save: 1.5, exp: 0.6, back: 8 },
+  { name: 'spender', stress: 1.5, bossWindow: 6, save: Infinity, exp: 0.8, back: 5 },
+  { name: 'thrifty', stress: 1.8, bossWindow: 8, save: 1.2, exp: 1, back: 8 },
+];
+
 interface Ctx {
   map: MapDef;
   diff: Diff;
-  stress: number;
+  policy: Policy;
   trace: boolean;
   /** Candidate tiles per tower type, best first. */
   tiles: Map<string, { c: number; r: number; score: number }[]>;
   rollouts: number;
+  pool: Pool | null;
 }
 
 type Move =
@@ -118,28 +152,30 @@ function rankTiles(w: World): Map<string, { c: number; r: number; score: number 
 /**
  * What a copy of the coming wave cost: lives lost (the copy has lives to
  * spare, so a lost game still says how badly), how much health the leaked
- * shapes still had (a boss that got through at 10% beats one at 90%), and how
- * deep shapes got down the road (squared, weighted by the lives each costs).
+ * shapes still had (a boss that got through at 10% beats one at 90%), how
+ * deep shapes got down the road (squared, weighted by the lives each costs),
+ * and the gold the wave paid.
  */
 interface Probe { lives: number; hurt: number; pen: number; gold: number }
 
 const score = (p: Probe) => p.lives * 60 + p.hurt * 30 + p.pen;
 
 /**
- * Play the next wave on a copy of the game after `move`, with enemy HP x`stress`.
+ * One copy to play: the next wave after `move`, with enemy HP x`stress`.
  * `wave` plays that wave instead of the next one (to see a boss coming);
  * `bound` stops early once the copy is already worse than that score.
  */
-function rollout(ctx: Ctx, base: WorldSave, move: Move | null, stress: number, o: { wave?: number; bound?: number } = {}): Probe | null {
-  ctx.rollouts++;
-  const w = new World({ map: ctx.map, difficulty: ctx.diff, seed: base.seed, fx: false, autoStart: false, packs: false });
-  w.restore(base);
+interface Task { map: string; diff: Diff; snap: WorldSave; move: Move | null; stress: number; wave?: number; bound?: number }
+
+function runTask(task: Task): Probe | null {
+  const w = new World({ map: MAP_BY_ID.get(task.map)!, difficulty: task.diff, seed: task.snap.seed, fx: false, autoStart: false, packs: false });
+  w.restore(task.snap);
   // A move it cannot afford yet is tried as if it could: is it worth saving for?
-  if (move) {
-    w.gold = Math.max(w.gold, move.cost);
-    if (!apply(w, move)) return null;
+  if (task.move) {
+    w.gold = Math.max(w.gold, task.move.cost);
+    if (!apply(w, task.move)) return null;
   }
-  (w as unknown as { diff: DifficultyDef }).diff = { ...w.diff, hp: w.diff.hp * stress };
+  (w as unknown as { diff: DifficultyDef }).diff = { ...w.diff, hp: w.diff.hp * task.stress };
   w.lives = 1e6;
   const gold0 = w.gold;
   const p: Probe = { lives: 0, hurt: 0, pen: 0, gold: 0 };
@@ -151,9 +187,9 @@ function rollout(ctx: Ctx, base: WorldSave, move: Move | null, stress: number, o
     }
     leak(e);
   };
-  if (o.wave) w.waveN = o.wave - 1;
+  if (task.wave) w.waveN = task.wave - 1;
   if (w.callWave() !== null) return p;
-  const bound = o.bound ?? Infinity;
+  const bound = task.bound ?? Infinity;
   const deep = new Map<number, [number, number]>();
   for (let t = 1; !w.quiescent() && w.phase === 'running' && t < 60 * 300; t++) {
     w.step();
@@ -171,6 +207,63 @@ function rollout(ctx: Ctx, base: WorldSave, move: Move | null, stress: number, o
   p.gold = w.gold - gold0;
   return p;
 }
+
+/** Worker threads that play copies; each loads the game once and then takes tasks. */
+class Pool {
+  private idle: Worker[] = [];
+  private all: Worker[] = [];
+  private queue: { task: Task; done: (p: Probe | null) => void }[] = [];
+  private busy = new Map<Worker, (p: Probe | null) => void>();
+
+  constructor(n: number) {
+    for (let i = 0; i < n; i++) {
+      const wk = new Worker(fileURLToPath(import.meta.url), { workerData: { strategistWorker: true } });
+      wk.on('message', (p: Probe | null) => {
+        const done = this.busy.get(wk)!;
+        this.busy.delete(wk);
+        this.idle.push(wk);
+        this.pump();
+        done(p);
+      });
+      wk.on('error', (e) => { throw e; });
+      this.all.push(wk);
+      this.idle.push(wk);
+    }
+  }
+
+  run(task: Task): Promise<Probe | null> {
+    return new Promise((done) => {
+      this.queue.push({ task, done });
+      this.pump();
+    });
+  }
+
+  private pump(): void {
+    while (this.idle.length && this.queue.length) {
+      const wk = this.idle.pop()!;
+      const { task, done } = this.queue.shift()!;
+      this.busy.set(wk, done);
+      wk.postMessage(task);
+    }
+  }
+
+  close(): void {
+    for (const wk of this.all) void wk.terminate();
+  }
+}
+
+if (!isMainThread && (workerData as { strategistWorker?: boolean } | null)?.strategistWorker) {
+  parentPort!.on('message', (task: Task) => parentPort!.postMessage(runTask(task)));
+}
+
+/** Play copies, on the pool when there is one. */
+async function probe(ctx: Ctx, tasks: Omit<Task, 'map' | 'diff'>[]): Promise<(Probe | null)[]> {
+  ctx.rollouts += tasks.length;
+  const full = tasks.map((t) => ({ ...t, map: ctx.map.id, diff: ctx.diff }));
+  return ctx.pool ? Promise.all(full.map((t) => ctx.pool!.run(t))) : full.map(runTask);
+}
+
+const probe1 = async (ctx: Ctx, t: Omit<Task, 'map' | 'diff'>) => (await probe(ctx, [t]))[0]!;
 
 // ------------------------------------------------------------------ cards
 
@@ -236,16 +329,18 @@ function shop(w: World): boolean {
 /** Moves worth trying that cost at most `budget`. */
 function candidates(w: World, ctx: Ctx, budget: number): Move[] {
   const moves: Move[] = [];
-  // New towers: each type on its best free tile; only the types that cover the
-  // most per gold (plus a Beacon when there is a cluster to boost) are tried.
+  // New towers: every type on its best free tile, and the most promising types
+  // (coverage x damage per gold) on their second-best tile too. Slows and
+  // amplifiers do little damage themselves, so no type is left out.
+  const free = (id: string, n: number) => (ctx.tiles.get(id) ?? []).filter((t) => w.canBuild(t.c, t.r)).slice(0, n);
   const promise = (id: string) => {
     const def = TOWER_BY_ID.get(id)!;
-    const spot = ctx.tiles.get(id)?.find((t) => w.canBuild(t.c, t.r));
+    const spot = free(id, 1)[0];
     return spot ? (spot.score * def.damage[0] * def.rate[0]) / def.cost : 0;
   };
-  const tryTypes = new Set([...TOWERS].filter((d) => d.chassis !== 'aura').sort((a, b) => promise(b.id) - promise(a.id)).slice(0, 6).map((d) => d.id));
+  const top = new Set([...TOWERS].filter((d) => d.chassis !== 'aura').sort((a, b) => promise(b.id) - promise(a.id)).slice(0, 3).map((d) => d.id));
   for (const def of TOWERS) {
-    if (def.cost > budget || (def.chassis !== 'aura' && !tryTypes.has(def.id))) continue;
+    if (def.cost > budget) continue;
     if (def.chassis === 'aura') {
       // A Beacon goes where it covers the most towers.
       let best: { c: number; r: number; n: number } | null = null;
@@ -257,79 +352,116 @@ function candidates(w: World, ctx: Ctx, budget: number): Move[] {
       if (best) moves.push({ k: 'build', def: def.id, c: best.c, r: best.r, cost: def.cost });
       continue;
     }
-    const spot = ctx.tiles.get(def.id)?.find((t) => w.canBuild(t.c, t.r));
-    if (spot) moves.push({ k: 'build', def: def.id, c: spot.c, r: spot.r, cost: def.cost });
+    for (const spot of free(def.id, top.has(def.id) ? 2 : 1)) moves.push({ k: 'build', def: def.id, c: spot.c, r: spot.r, cost: def.cost });
   }
   const busy = [...w.towers].sort((a, b) => b.dmgTotal - a.dmgTotal);
-  for (const t of busy.slice(0, 7)) {
+  for (const t of busy.slice(0, 8)) {
     const up = w.upgradeCost(t);
     if (up !== null && up <= budget) moves.push({ k: 'upgrade', c: t.c, r: t.r, cost: up });
   }
-  for (const t of busy.slice(0, 3)) {
+  for (const t of busy.slice(0, 4)) {
     const lv = w.levelCost(t);
     if (lv !== null && lv <= budget) moves.push({ k: 'level', c: t.c, r: t.r, cost: lv });
   }
-  // Sockets: the two best cards for each tower with a slot open.
+  // Sockets: every card in hand into the busiest towers with a slot open, and
+  // the two best-rated cards into the rest (a slow or an amp can pay off on
+  // any tower, whatever its own rating).
   let sockets = 0;
-  for (const t of busy) {
-    if (t.tier <= t.sockets.length || sockets >= 8) continue;
-    const cards = [...w.cards].sort((a, b) => RARITY_WEIGHT[b.rarity] * rating(t.def.id, b.power) - RARITY_WEIGHT[a.rarity] * rating(t.def.id, a.power)).slice(0, 2);
-    for (const c of cards) {
+  busy.filter((t) => t.tier > t.sockets.length).forEach((t, i) => {
+    const ranked = [...w.cards].sort((a, b) => RARITY_WEIGHT[b.rarity] * rating(t.def.id, b.power) - RARITY_WEIGHT[a.rarity] * rating(t.def.id, a.power));
+    for (const c of i < 4 ? ranked : ranked.slice(0, 2)) {
       const cost = w.socketCost(t, c.rarity);
-      if (cost !== null && cost <= budget) {
+      if (cost !== null && cost <= budget && sockets < 20) {
         moves.push({ k: 'socket', c: t.c, r: t.r, card: c.uid, cost });
         sockets++;
       }
     }
-  }
+  });
   return moves;
 }
 
-/**
- * The stress at which the defence starts to bend: the planning stress, raised
- * while the coming wave is easy. Improving the defence there buys margin for
- * the waves after, the way a strong player keeps turning gold into safety.
- */
-function bendingPoint(ctx: Ctx, snap: WorldSave, from: number): { stress: number; base: Probe } {
-  let stress = from;
-  let base = rollout(ctx, snap, null, stress)!;
-  while (base.lives === 0 && base.pen < 1.5 && stress < 8) {
-    stress *= 1.6;
-    base = rollout(ctx, snap, null, stress)!;
-  }
-  return { stress, base };
-}
-
 /** The next boss wave within `ahead` waves after the coming one, if any. */
-function bossAhead(w: World, ctx: Ctx, ahead = 5): number | null {
-  for (let n = w.waveN + 2; n <= Math.min(w.totalWaves, w.waveN + 1 + ahead); n++) if (bossFor(ctx.map, n)) return n;
+function bossAhead(w: World, ctx: Ctx): number | null {
+  for (let n = w.waveN + 2; n <= Math.min(w.totalWaves, w.waveN + 1 + ctx.policy.bossWindow); n++) if (bossFor(ctx.map, n)) return n;
   return null;
 }
 
 /**
  * What to plan against this step, in order:
  *   1. the coming wave at its real HP, if it would leak (exactly what will happen);
- *   2. the coming wave with a little more HP (the planning stress, x1.5), if that
- *      would leak: the next few waves are about that much harder;
- *   3. a boss due within five waves, played now against the current defence,
- *      if it would get through (bosses need building for well ahead);
+ *   2. the coming wave with a little more HP (the policy's stress, x1.5 by
+ *      default), if that would leak: the next few waves are about that much harder;
+ *   3. a boss due within the policy's window, played now against the current
+ *      defence, if it would get through (bosses need building for well ahead);
  *   4. the coming wave at the HP where the defence starts to bend, for margin.
  */
-interface Objective { stress: number; base: Probe; wave?: number; why: string; urgent: boolean; income: number }
+interface Objective { stress: number; base: Probe; wave?: number; why: string; kind: 'leak' | 'near' | 'boss' | 'margin'; urgent: boolean; income: number }
 
-function objective(w: World, ctx: Ctx, snap: WorldSave, from: number): Objective {
-  const truth = rollout(ctx, snap, null, 1)!;
-  const income = truth.gold;
-  if (truth.lives > 0) return { stress: 1, base: truth, why: 'leak', urgent: true, income };
-  const near = rollout(ctx, snap, null, ctx.stress)!;
-  if (near.lives > 0) return { stress: ctx.stress, base: near, why: `@x${ctx.stress}`, urgent: false, income };
-  const boss = bossAhead(w, ctx);
-  if (boss) {
-    const preview = rollout(ctx, snap, null, 1, { wave: boss })!;
-    if (preview.lives > 0) return { stress: 1, base: preview, wave: boss, why: `boss ${boss}`, urgent: false, income };
+/**
+ * `prev` is this wave's objective before the last purchase. A purchase only
+ * makes the defence stronger, so the checks it already passed are not run
+ * again: once the plan is about margin, one copy per step is enough.
+ */
+async function objective(w: World, ctx: Ctx, snap: WorldSave, from: number, prev: Objective | null): Promise<Objective> {
+  const s = ctx.policy.stress;
+  const order = ['leak', 'near', 'boss', 'margin'];
+  const skip = prev ? order.indexOf(prev.kind) : 0;
+  let income = prev?.income ?? 0;
+  if (prev?.kind === 'margin') {
+    const base = (await probe1(ctx, { snap, move: null, stress: prev.stress }))!;
+    // Still bending there: keep at it. Grown past it: look for the new bending point.
+    if (base.lives > 0 || base.pen >= 1.5) return { ...prev, base };
+    from = Math.max(from, prev.stress);
   }
-  const bend = bendingPoint(ctx, snap, from);
-  return { ...bend, why: `@x${bend.stress.toFixed(1)}`, urgent: false, income };
+  const boss = bossAhead(w, ctx);
+  const checks: { name: 'truth' | 'near' | 'preview'; task: Omit<Task, 'map' | 'diff'> }[] = [];
+  if (skip <= 0) checks.push({ name: 'truth', task: { snap, move: null, stress: 1 } });
+  if (skip <= 1) checks.push({ name: 'near', task: { snap, move: null, stress: s } });
+  if (boss && skip <= 2) checks.push({ name: 'preview', task: { snap, move: null, stress: 1, wave: boss } });
+  const got = await probe(ctx, checks.map((c) => c.task));
+  const res = (name: string) => got[checks.findIndex((c) => c.name === name)] ?? undefined;
+  const truth = res('truth'), near = res('near'), preview = res('preview');
+  if (truth) income = truth.gold;
+  if (truth && truth.lives > 0) return { stress: 1, base: truth, why: 'leak', kind: 'leak', urgent: true, income };
+  if (near && near.lives > 0) return { stress: s, base: near, why: `@x${s}`, kind: 'near', urgent: false, income };
+  if (preview && preview.lives > 0) return { stress: 1, base: preview, wave: boss!, why: `boss ${boss}`, kind: 'boss', urgent: false, income };
+  // The bending point: raise the HP while the wave stays easy (several guesses at once).
+  const ladder = [0, 1, 2, 3].map((i) => Math.max(from, s) * 1.6 ** i).filter((x) => x < 12);
+  const tries = await probe(ctx, ladder.map((stress) => ({ snap, move: null, stress })));
+  let i = tries.findIndex((p) => p!.lives > 0 || p!.pen >= 1.5);
+  if (i < 0) i = ladder.length - 1;
+  return { stress: ladder[i], base: tries[i]!, why: `@x${ladder[i].toFixed(1)}`, kind: 'margin', urgent: false, income };
+}
+
+/** A move's identity across steps (its cost may change; what it does does not). */
+const moveKey = (m: Move) => (m.k === 'build' ? `b:${m.def}:${m.c},${m.r}` : m.k === 'socket' ? `s:${m.c},${m.r}:${m.card}` : `${m.k}:${m.c},${m.r}`);
+
+interface Ranking { buy: { m: Move; gain: number } | null; wait: Move | null; top: string[] }
+
+/** Try each move on a copy; the best buy, whether to save instead, and the best moves in order. */
+async function rank(w: World, ctx: Ctx, snap: WorldSave, moves: Move[], o: Objective): Promise<Ranking> {
+  const pol = ctx.policy;
+  const s0 = score(o.base);
+  const probes = await probe(ctx, moves.map((m) => ({ snap, move: m, stress: o.stress, wave: o.wave, bound: s0 })));
+  const scored: { m: Move; gain: number; value: number }[] = [];
+  let later: { m: Move; perGold: number } | null = null;
+  let nowPerGold = 0;
+  moves.forEach((m, i) => {
+    const p = probes[i];
+    if (!p) return;
+    const gain = s0 - score(p);
+    if (gain <= 0.05) return;
+    scored.push({ m, gain, value: gain / Math.pow(m.cost, pol.exp) });
+    if (m.cost > w.gold) {
+      if (!later || gain / m.cost > later.perGold) later = { m, perGold: gain / m.cost };
+    } else nowPerGold = Math.max(nowPerGold, gain / m.cost);
+  });
+  scored.sort((a, b) => b.value - a.value);
+  const buy = scored.find((x) => x.m.cost <= w.gold) ?? null;
+  // Save only for something clearly better per gold than anything it can buy now.
+  const l = later as { m: Move; perGold: number } | null;
+  const wait = l && l.perGold > pol.save * nowPerGold ? l.m : null;
+  return { buy, wait, top: scored.slice(0, 8).map((x) => moveKey(x.m)) };
 }
 
 /**
@@ -337,48 +469,58 @@ function objective(w: World, ctx: Ctx, snap: WorldSave, from: number): Objective
  * coming wave would leak, moves the next wave's income would pay for are
  * weighed too: when one of those is clearly better per gold than anything
  * affordable now, it saves for it rather than spending on something worse.
+ *
+ * Lazy greedy: after a full look at every candidate, the next few purchases
+ * only re-try the previous best eight (buying one rarely makes a move that was
+ * worthless worth a lot). A full look comes back every fourth purchase, when
+ * the objective changes, and before stopping or saving on a stale ranking.
  */
-function plan(w: World, ctx: Ctx): string[] {
+async function plan(w: World, ctx: Ctx): Promise<string[]> {
   const done: string[] = [];
-  let from = ctx.stress;
-  for (let step = 0; step < 20; step++) {
+  const pol = ctx.policy;
+  let from = pol.stress;
+  let short: Set<string> | null = null;
+  let lastKind = '';
+  let sinceFull = 0;
+  let prev: Objective | null = null;
+  for (let step = 0; step < 24; step++) {
     const snap = w.snapshot();
-    const { stress, base, wave, why, urgent, income } = objective(w, ctx, snap, from);
-    if (stress > ctx.stress) from = stress;
-    const moves = candidates(w, ctx, urgent ? w.gold : w.gold + income);
+    const o = await objective(w, ctx, snap, from, prev);
+    prev = o;
+    if (o.stress > pol.stress) from = o.stress;
+    const moves = candidates(w, ctx, o.urgent || pol.save === Infinity ? w.gold : w.gold + o.income);
     if (!moves.length) {
       if (shop(w)) continue;
       break;
     }
-    const s0 = score(base);
-    let best: { m: Move; value: number; gain: number } | null = null;
-    let later: { m: Move; perGold: number } | null = null;
-    let nowPerGold = 0;
-    for (const m of moves) {
-      const p = rollout(ctx, snap, m, stress, { wave, bound: s0 });
-      if (!p) continue;
-      const gain = s0 - score(p);
-      if (gain <= 0.05) continue;
-      if (m.cost > w.gold) {
-        if (!later || gain / m.cost > later.perGold) later = { m, perGold: gain / m.cost };
-        continue;
+    const kind = o.why;
+    let r: Ranking | null = null;
+    if (short && kind === lastKind && sinceFull < 3) {
+      const kept = moves.filter((m) => short!.has(moveKey(m)));
+      if (kept.length >= 3) {
+        r = await rank(w, ctx, snap, kept, o);
+        // Stopping or saving on a ranking more than one purchase old needs a full look first.
+        if ((!r.buy || r.wait) && sinceFull > 0) r = null;
+        else sinceFull++;
       }
-      nowPerGold = Math.max(nowPerGold, gain / m.cost);
-      const value = gain / Math.pow(m.cost, 0.6);
-      if (!best || value > best.value) best = { m, value, gain };
     }
-    // Save only for something clearly better per gold than anything it can buy now.
-    if (later && later.perGold > 1.5 * nowPerGold) {
-      done.push(`saves for ${describe(later.m, w)} (${why})`);
+    if (!r) {
+      r = await rank(w, ctx, snap, moves, o);
+      short = new Set(r.top);
+      sinceFull = 0;
+    }
+    lastKind = kind;
+    if (r.wait) {
+      done.push(`saves for ${describe(r.wait, w)} (${o.why})`);
       break;
     }
-    if (!best) {
+    if (!r.buy) {
       // Nothing worth buying: maybe a pack would give the sockets something to use.
       if (shop(w)) continue;
       break;
     }
-    done.push(`${describe(best.m, w)} (-${best.gain.toFixed(1)} ${why})`);
-    apply(w, best.m);
+    done.push(`${describe(r.buy.m, w)} (-${r.buy.gain.toFixed(1)} ${o.why})`);
+    apply(w, r.buy.m);
   }
   return done;
 }
@@ -397,6 +539,8 @@ export interface Result {
   levels: number;
   /** For a loss: the fraction of its HP the killing wave would have needed to be held (1 for a win). */
   hold: number;
+  /** How many times the search went back to try another policy. */
+  tries: number;
   rollouts: number;
   ms: number;
 }
@@ -412,68 +556,133 @@ export interface Script {
   diff: Diff;
   seed: number;
   start: WorldSave;
-  steps: { tick: number; calls: [string, ...unknown[]][]; after: { gold: number; lives: number; waveN: number } }[];
+  steps: Step[];
   result?: Result;
 }
+type Step = { tick: number; calls: [string, ...unknown[]][]; after: { gold: number; lives: number; waveN: number } };
 
 /** The world methods a player uses; recording wraps them. */
 export const PLAYER_CALLS = ['place', 'upgrade', 'levelUp', 'socket', 'openPack', 'pickCard', 'scrapCard', 'buyPack', 'callWave'] as const;
 
-export function play(mapId: string, diff: Diff, seed: number, o: { stress?: number; trace?: boolean; record?: boolean } = {}): Result & { script?: Script } {
+/** Log the outermost player calls made on `w` (a call may use another inside). */
+function recordCalls(w: World, log: [string, ...unknown[]][]): void {
+  let depth = 0;
+  const rec = w as unknown as Record<string, (...a: unknown[]) => unknown>;
+  for (const name of PLAYER_CALLS) {
+    const f = rec[name].bind(w);
+    rec[name] = (...a: unknown[]) => {
+      if (!depth) log.push([name, ...a]);
+      depth++;
+      try { return f(...a); } finally { depth--; }
+    };
+  }
+}
+
+/** One line of play, from a start to victory or defeat. */
+interface Line { won: boolean; wave: number; lives: number; w: World; steps: Step[]; last: WorldSave | null }
+
+export async function play(
+  mapId: string, diff: Diff, seed: number,
+  o: { trace?: boolean; record?: boolean; tries?: number; threads?: number } = {},
+): Promise<Result & { script?: Script }> {
   const t0 = Date.now();
   const map = MAP_BY_ID.get(mapId)!;
   const trace = !!o.trace;
-  const w = new World({ map, difficulty: diff, seed, fx: false, autoStart: false });
-  const ctx: Ctx = { map, diff, stress: o.stress ?? 1.5, trace, tiles: rankTiles(w), rollouts: 0 };
+  const fresh = new World({ map, difficulty: diff, seed, fx: false, autoStart: false });
+  const start = fresh.snapshot();
+  const threads = o.threads ?? availableParallelism();
+  const ctx: Ctx = { map, diff, policy: POLICIES[0], trace, tiles: rankTiles(fresh), rollouts: 0, pool: threads > 1 ? new Pool(threads) : null };
   const log: [string, ...unknown[]][] = [];
-  const script: Script | undefined = o.record ? { map: mapId, diff, seed, start: w.snapshot(), steps: [] } : undefined;
-  if (script) {
-    // Log the outermost player calls only (a call may use another inside).
-    let depth = 0;
-    const rec = w as unknown as Record<string, (...a: unknown[]) => unknown>;
-    for (const name of PLAYER_CALLS) {
-      const f = rec[name].bind(w);
-      rec[name] = (...a: unknown[]) => {
-        if (!depth) log.push([name, ...a]);
-        depth++;
-        try { return f(...a); } finally { depth--; }
-      };
+
+  // Checkpoints: the exact state at the start of each wave of the current line,
+  // the steps played before it, and the policies already tried from there.
+  const checkpoints = new Map<number, { save: WorldSave; steps: number; tried: Set<string> }>();
+
+  /** Play on from `w` with the current policy until the game ends. */
+  const run = async (w: World, steps: Step[]): Promise<Line> => {
+    recordCalls(w, log);
+    let last: WorldSave | null = null;
+    while (w.phase !== 'victory' && w.phase !== 'defeat') {
+      const tick = w.tick;
+      const here = w.snapshot();
+      const cp = checkpoints.get(w.waveN);
+      if (!cp || cp.save.tick !== here.tick) checkpoints.set(w.waveN, { save: here, steps: steps.length, tried: new Set([ctx.policy.name]) });
+      log.length = 0;
+      const tw = Date.now(), r0 = ctx.rollouts;
+      openPacks(w);
+      const moves = await plan(w, ctx);
+      const expect = trace ? await probe1(ctx, { snap: w.snapshot(), move: null, stress: 1 }) : null;
+      if (trace) console.log(`wave ${w.waveN + 1} · lives ${w.lives} · gold ${Math.round(w.gold)} · ${moves.join('; ') || 'saves'} [${ctx.rollouts - r0} copies, ${((Date.now() - tw) / 1000).toFixed(0)}s]`);
+      const l0 = w.lives;
+      last = w.snapshot();
+      const called = w.callWave();
+      steps.push({ tick, calls: [...log], after: { gold: w.gold, lives: w.lives, waveN: w.waveN } });
+      if (called !== null && w.quiescent()) break;
+      for (let t = 0; !w.quiescent() && w.phase === 'running' && t < 60 * 600; t++) w.step();
+      // Let the last shots land, so the snapshot the next plan starts from is exact.
+      for (let t = 0; !w.settled() && w.phase === 'running' && t < 600; t++) w.step();
+      if (expect && expect.lives !== l0 - w.lives && (w.phase as string) !== 'defeat') console.log(`  !! expected to lose ${expect.lives}, lost ${l0 - w.lives}`);
     }
+    const won = w.phase === 'victory';
+    return { won, wave: won ? w.totalWaves : w.waveN, lives: w.lives, w, steps, last };
+  };
+
+  const better = (a: Line, b: Line | null) => !b || (a.won && !b.won) || (a.won === b.won && (a.wave > b.wave || (a.wave === b.wave && a.lives > b.lives)));
+  let line = await run(fresh, []);
+  let best = line;
+  let tries = 0;
+  // The search: after a loss, go back a few waves and play on with a policy not
+  // yet tried from there (after a boss, preparing for it earlier comes first);
+  // when every policy has been tried, go back further.
+  while (!line.won && tries < (o.tries ?? 8)) {
+    const order = bossFor(map, line.wave)
+      ? ['boss-first', 'safe', 'thrifty', 'spender', 'balanced']
+      : ['safe', 'thrifty', 'spender', 'boss-first', 'balanced'];
+    let pick: { at: number; policy: Policy } | null = null;
+    for (let deeper = 0; deeper <= 20 && !pick; deeper += 5) {
+      for (const name of order) {
+        const policy = POLICIES.find((p) => p.name === name)!;
+        const target = line.wave - policy.back - deeper;
+        const at = [...checkpoints.keys()].filter((n) => n <= Math.max(0, target)).sort((a, b) => b - a)[0];
+        if (at === undefined || checkpoints.get(at)!.tried.has(name)) continue;
+        pick = { at, policy };
+        break;
+      }
+    }
+    if (!pick) break;
+    const cp = checkpoints.get(pick.at)!;
+    cp.tried.add(pick.policy.name);
+    // Later checkpoints belong to the line being abandoned.
+    for (const n of [...checkpoints.keys()]) if (n > pick.at) checkpoints.delete(n);
+    tries++;
+    if (trace) console.log(`  <- lost at wave ${line.wave}; back to wave ${pick.at + 1} to play it '${pick.policy.name}'`);
+    ctx.policy = pick.policy;
+    const w = new World({ map, difficulty: diff, seed, fx: false, autoStart: false });
+    w.restore(cp.save);
+    line = await run(w, line.steps.slice(0, cp.steps));
+    if (better(line, best)) best = line;
   }
-  let last: WorldSave | null = null;
-  while (w.phase !== 'victory' && w.phase !== 'defeat') {
-    const tick = w.tick;
-    log.length = 0;
-    openPacks(w);
-    const moves = plan(w, ctx);
-    const expect = trace ? rollout(ctx, w.snapshot(), null, 1)! : null;
-    if (trace) console.log(`wave ${w.waveN + 1} · lives ${w.lives} · gold ${Math.round(w.gold)} · ${moves.join('; ') || 'saves'}`);
-    const l0 = w.lives;
-    last = w.snapshot();
-    const called = w.callWave();
-    script?.steps.push({ tick, calls: [...log], after: { gold: w.gold, lives: w.lives, waveN: w.waveN } });
-    if (called !== null && w.quiescent()) break;
-    for (let t = 0; !w.quiescent() && w.phase === 'running' && t < 60 * 600; t++) w.step();
-    // Let the last shots land, so the snapshot the next plan starts from is exact.
-    for (let t = 0; !w.settled() && w.phase === 'running' && t < 600; t++) w.step();
-    if (expect && expect.lives !== l0 - w.lives) console.log(`  !! expected to lose ${expect.lives}, lost ${l0 - w.lives}`);
-  }
+
   // How close a loss was: the enemy HP (x the difficulty's) at which the last defence would have held.
   let hold = 1;
-  if (w.phase === 'defeat' && last) {
-    const snap = last;
-    const holds = (k: number) => rollout(ctx, snap, null, k)!.lives < snap.lives;
+  if (!best.won && best.last) {
+    const snap = best.last;
     let lo = 0, hi = 1;
-    for (let i = 0; i < 7; i++) { const mid = (lo + hi) / 2; if (holds(mid)) lo = mid; else hi = mid; }
+    for (let i = 0; i < 7; i++) {
+      const mid = (lo + hi) / 2;
+      if ((await probe1(ctx, { snap, move: null, stress: mid })).lives < snap.lives) lo = mid; else hi = mid;
+    }
     hold = lo;
   }
+  ctx.pool?.close();
+  const w = best.w;
   const tiers = [1, 2, 3].map((k) => w.towers.filter((t) => t.tier === k).length).join('/');
   const result: Result = {
-    map: mapId, diff, seed, won: w.phase === 'victory', wave: w.phase === 'victory' ? w.totalWaves : w.waveN, lives: w.lives,
+    map: mapId, diff, seed, won: best.won, wave: best.wave, lives: best.lives,
     towers: `${w.towers.length} (${tiers})`, fused: w.towers.filter((t) => t.sockets.length >= 2).length,
-    levels: w.towers.reduce((a, t) => a + t.level - 1, 0), hold, rollouts: ctx.rollouts, ms: Date.now() - t0,
+    levels: w.towers.reduce((a, t) => a + t.level - 1, 0), hold, tries, rollouts: ctx.rollouts, ms: Date.now() - t0,
   };
-  if (script) script.result = result;
+  const script: Script | undefined = o.record ? { map: mapId, diff, seed, start, steps: best.steps, result } : undefined;
   return { ...result, script };
 }
 
@@ -492,16 +701,17 @@ function pickDiffs(arg: string): Diff[] {
 }
 
 const line = (r: Result) =>
-  `${r.map.padEnd(12)} ${r.diff.padEnd(7)} ${String(r.seed).padStart(3)}  ${(r.won ? `WON ${r.wave}` : `lost at ${r.wave} (${Math.round(r.hold * 100)}%)`).padEnd(18)} ${String(r.lives).padStart(4)}  ${r.towers.padEnd(12)} ${String(r.fused).padStart(5)} ${String(r.levels).padStart(5)} ${String(r.rollouts).padStart(7)} ${(r.ms / 1000).toFixed(0).padStart(5)}s`;
+  `${r.map.padEnd(12)} ${r.diff.padEnd(7)} ${String(r.seed).padStart(3)}  ${(r.won ? `WON ${r.wave}` : `lost at ${r.wave} (${Math.round(r.hold * 100)}%)`).padEnd(18)} ${String(r.lives).padStart(4)}  ${r.towers.padEnd(12)} ${String(r.fused).padStart(5)} ${String(r.levels).padStart(5)} ${String(r.tries).padStart(5)} ${String(r.rollouts).padStart(7)} ${(r.ms / 1000).toFixed(0).padStart(5)}s`;
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+if (isMainThread && process.argv[1] === fileURLToPath(import.meta.url)) {
   const args = process.argv.slice(2);
   const flag = (name: string, dflt: string) => {
     const i = args.indexOf(`--${name}`);
     return i >= 0 ? args.splice(i, 2)[1] : dflt;
   };
-  const stress = Number(flag('stress', '1.5'));
   const jobs = Number(flag('jobs', String(Math.max(1, availableParallelism()))));
+  const tries = Number(flag('tries', '8'));
+  const threadsArg = flag('threads', '');
   const record = flag('record', '');
   const seed = Number(flag('seed', '7919'));
   const trace = args.includes('--trace');
@@ -509,15 +719,16 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const pos = args.filter((a) => !a.startsWith('--'));
   if (job) {
     // A child: play one game and report it as JSON.
-    const [map, diff, seed] = pos;
-    process.stdout.write(JSON.stringify(play(map, diff as Diff, Number(seed), { stress })) + '\n');
+    const [map, diff, s] = pos;
+    const r = await play(map, diff as Diff, Number(s), { tries, threads: Number(threadsArg || 1) });
+    process.stdout.write(JSON.stringify(r) + '\n');
   } else {
     const maps = pickMaps(pos[0] ?? 'all');
     const diffs = pickDiffs(pos[1] ?? 'normal');
     const seeds = Math.max(1, Number(pos[2] ?? 1));
-    const header = `map          diff    seed  result (held at)   lives  towers (t1/t2/t3) fused  lvls  rollouts   time`;
+    const header = `map          diff    seed  result (held at)   lives  towers (t1/t2/t3) fused  lvls tries rollouts   time`;
     if (trace || record || (maps.length === 1 && diffs.length === 1 && seeds === 1)) {
-      const { script, ...r } = play(maps[0], diffs[0], seed, { stress, trace, record: !!record });
+      const { script, ...r } = await play(maps[0], diffs[0], seed, { trace, record: !!record, tries, threads: threadsArg ? Number(threadsArg) : undefined });
       console.log(header);
       console.log(line(r));
       if (record) {
@@ -537,7 +748,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
         while (running < jobs && queue.length) {
           const [m, d, s] = queue.shift()!;
           running++;
-          const child = fork(fileURLToPath(import.meta.url), [m, d, s, '--job', '--stress', String(stress)], { stdio: ['ignore', 'pipe', 'inherit', 'ipc'] });
+          const child = fork(fileURLToPath(import.meta.url), [m, d, s, '--job', '--tries', String(tries), '--threads', threadsArg || '1'], { stdio: ['ignore', 'pipe', 'inherit', 'ipc'] });
           let out = '';
           child.stdout!.on('data', (b) => { out += b; });
           child.on('exit', () => {
