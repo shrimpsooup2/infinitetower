@@ -437,6 +437,11 @@ title menu for replays. Nothing else in the UI carries instructional text.
 - **4D enemies** are rotating wireframe projections through the fourth axis.
 - **Fusion visuals** come from the model's VFX language (particles, beams, shapes, orbiters,
   text, screen shake), so every fusion looks like its idea.
+- **The menus** float the game's shapes in the background, and they are a toy. They drift out
+  of the cursor's way. You can grab one and fling it into the others. Clicking a polygon knocks
+  off a side (hexagon, pentagon, ... triangle) and then pops it, and solids split in two
+  before popping. Clicking empty space sends out a small shockwave. The shapes persist across
+  screens until a reload.
 
 ---
 

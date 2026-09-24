@@ -7,77 +7,13 @@ import { Codex, loadSettings, saveSettings, loadProgress, loadRun, clearRun, typ
 import { h, mount, clear, tone } from './ui/dom.ts';
 import { MAPS, MAP_BY_ID, ACTS, TUTORIAL_MAP } from '../content/maps.ts';
 import { DIFFICULTIES } from '../content/rules.ts';
-import { ENEMIES } from '../content/enemies.ts';
 import { TOTAL_FUSIONS } from '../effects/keys.ts';
-import { PAL } from '../content/colors.ts';
-import { drawEnemyBody } from './render/enemy-art.ts';
 import { drawScenery, themeOf } from './render/scenery.ts';
 import { CampaignMap, ROMAN, DIFF_COLOR } from './campaign.ts';
 import { dexScreen } from './dex.ts';
+import { Attract } from './attract.ts';
 import { codexScreen } from './codex-screen.ts';
 import type { DifficultyDef, MapDef } from '../sim/types.ts';
-
-/**
- * The drifting shapes behind the menus. They are made once per page load and
- * keep drifting from where they were as you move between screens (and come
- * back from a game); only a reload shuffles them.
- */
-class Attract {
-  private raf = 0;
-  private readonly shapes: { def: (typeof ENEMIES)[number]; x: number; y: number; vx: number; vy: number; r: number; rot: number; t: number }[];
-  private canvas: HTMLCanvasElement;
-  constructor(canvas: HTMLCanvasElement) {
-    this.canvas = canvas;
-    const pool = ENEMIES.filter((e) => !e.traits.includes('boss'));
-    this.shapes = Array.from({ length: 26 }, (_, i) => {
-      const def = pool[(i * 7) % pool.length];
-      return { def, x: Math.random(), y: Math.random(), vx: (Math.random() - 0.5) * 0.02, vy: (Math.random() - 0.5) * 0.02, r: 14 + def.dim * 7 + Math.random() * 10, rot: Math.random() * 6, t: Math.random() * 10 };
-    });
-  }
-  start(): void {
-    if (this.raf) return;
-    let last = performance.now();
-    const frame = (now: number) => {
-      this.raf = requestAnimationFrame(frame);
-      const dt = Math.min(0.05, (now - last) / 1000);
-      last = now;
-      this.draw(dt);
-    };
-    this.raf = requestAnimationFrame(frame);
-  }
-  stop(): void {
-    cancelAnimationFrame(this.raf);
-    this.raf = 0;
-  }
-  private draw(dt: number): void {
-    const c = this.canvas;
-    const dpr = Math.min(2, window.devicePixelRatio || 1);
-    const W = window.innerWidth, H = window.innerHeight;
-    if (c.width !== Math.round(W * dpr)) {
-      c.width = Math.round(W * dpr);
-      c.height = Math.round(H * dpr);
-      c.style.width = `${W}px`;
-      c.style.height = `${H}px`;
-    }
-    const g = c.getContext('2d')!;
-    g.setTransform(dpr, 0, 0, dpr, 0, 0);
-    g.fillStyle = PAL.bg;
-    g.fillRect(0, 0, W, H);
-    g.strokeStyle = PAL.grid;
-    g.lineWidth = 1;
-    g.beginPath();
-    for (let x = 0; x < W; x += 26) { g.moveTo(x + 0.5, 0); g.lineTo(x + 0.5, H); }
-    for (let y = 0; y < H; y += 26) { g.moveTo(0, y + 0.5); g.lineTo(W, y + 0.5); }
-    g.stroke();
-    for (const s of this.shapes) {
-      s.x = (s.x + s.vx * dt + 1.1) % 1.1;
-      s.y = (s.y + s.vy * dt + 1.1) % 1.1;
-      s.rot += dt * 0.3;
-      s.t += dt;
-      drawEnemyBody(g, s.def, (s.x - 0.05) * W, (s.y - 0.05) * H, s.r, s.rot, s.t, s.def.color, 3, 3);
-    }
-  }
-}
 
 /** A small picture of a map in its theme, for the campaign screen. */
 function mapPreview(m: MapDef, w: number): HTMLCanvasElement {
@@ -103,7 +39,7 @@ class App {
   readonly codex = new Codex();
   readonly forge: ForgeClient;
   private game: Game | null = null;
-  private attract = new Attract(this.canvas);
+  private attract = new Attract(this.canvas, this.audio);
   private selMap = 'meadow';
   private selDiff: DifficultyDef['id'] = 'normal';
   private last: { map: string; diff: DifficultyDef['id'] } | null = null;

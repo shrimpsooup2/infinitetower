@@ -505,3 +505,7 @@ canvas#game { position: fixed; inset: 0; display: block; }
 .dex-card.unseen canvas { filter: brightness(0) opacity(0.45); }
 .dex-card.unseen .nm { opacity: 0.6; }
 .powerhead { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+
+/* Menu shapes you can play with */
+body.shape-hover .screen { cursor: grab; }
+body.shape-drag, body.shape-drag * { cursor: grabbing !important; }
