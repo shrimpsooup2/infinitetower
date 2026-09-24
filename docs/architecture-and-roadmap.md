@@ -149,7 +149,9 @@ tools/            bot (playtest), strategist (planning bot), record (video of a 
     4. the coming wave at the HP where the defence starts to bend, to buy margin.
   - Each step it makes the move that cuts the threat most per gold. The threat counts lives
     lost, then how much health the shapes that got through still had, then how far shapes
-    got down the road. The copies have lives to spare, so a copy that would lose the game
+    got down the road. Unless the coming wave would leak, it also weighs moves the next
+    wave's income would pay for, and saves for one when it is clearly better per gold
+    (1.5×) than anything it can buy now. The copies have lives to spare, so a copy that would lose the game
     still shows how badly.
   - For a loss it reports how close it was: the share of the killing wave's HP at which
     its last defence would have held.

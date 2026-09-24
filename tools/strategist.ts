@@ -121,7 +121,7 @@ function rankTiles(w: World): Map<string, { c: number; r: number; score: number 
  * shapes still had (a boss that got through at 10% beats one at 90%), and how
  * deep shapes got down the road (squared, weighted by the lives each costs).
  */
-interface Probe { lives: number; hurt: number; pen: number }
+interface Probe { lives: number; hurt: number; pen: number; gold: number }
 
 const score = (p: Probe) => p.lives * 60 + p.hurt * 30 + p.pen;
 
@@ -134,10 +134,15 @@ function rollout(ctx: Ctx, base: WorldSave, move: Move | null, stress: number, o
   ctx.rollouts++;
   const w = new World({ map: ctx.map, difficulty: ctx.diff, seed: base.seed, fx: false, autoStart: false, packs: false });
   w.restore(base);
-  if (move && !apply(w, move)) return null;
+  // A move it cannot afford yet is tried as if it could: is it worth saving for?
+  if (move) {
+    w.gold = Math.max(w.gold, move.cost);
+    if (!apply(w, move)) return null;
+  }
   (w as unknown as { diff: DifficultyDef }).diff = { ...w.diff, hp: w.diff.hp * stress };
   w.lives = 1e6;
-  const p: Probe = { lives: 0, hurt: 0, pen: 0 };
+  const gold0 = w.gold;
+  const p: Probe = { lives: 0, hurt: 0, pen: 0, gold: 0 };
   const leak = w.leak.bind(w);
   w.leak = (e) => {
     if (e.alive) {
@@ -163,6 +168,7 @@ function rollout(ctx: Ctx, base: WorldSave, move: Move | null, stress: number, o
     }
   }
   for (const [f, l] of deep.values()) p.pen += f * f * l;
+  p.gold = w.gold - gold0;
   return p;
 }
 
@@ -227,7 +233,8 @@ function shop(w: World): boolean {
 
 // ------------------------------------------------------------------ planning
 
-function candidates(w: World, ctx: Ctx): Move[] {
+/** Moves worth trying that cost at most `budget`. */
+function candidates(w: World, ctx: Ctx, budget: number): Move[] {
   const moves: Move[] = [];
   // New towers: each type on its best free tile; only the types that cover the
   // most per gold (plus a Beacon when there is a cluster to boost) are tried.
@@ -238,7 +245,7 @@ function candidates(w: World, ctx: Ctx): Move[] {
   };
   const tryTypes = new Set([...TOWERS].filter((d) => d.chassis !== 'aura').sort((a, b) => promise(b.id) - promise(a.id)).slice(0, 6).map((d) => d.id));
   for (const def of TOWERS) {
-    if (def.cost > w.gold || (def.chassis !== 'aura' && !tryTypes.has(def.id))) continue;
+    if (def.cost > budget || (def.chassis !== 'aura' && !tryTypes.has(def.id))) continue;
     if (def.chassis === 'aura') {
       // A Beacon goes where it covers the most towers.
       let best: { c: number; r: number; n: number } | null = null;
@@ -256,11 +263,11 @@ function candidates(w: World, ctx: Ctx): Move[] {
   const busy = [...w.towers].sort((a, b) => b.dmgTotal - a.dmgTotal);
   for (const t of busy.slice(0, 7)) {
     const up = w.upgradeCost(t);
-    if (up !== null && up <= w.gold) moves.push({ k: 'upgrade', c: t.c, r: t.r, cost: up });
+    if (up !== null && up <= budget) moves.push({ k: 'upgrade', c: t.c, r: t.r, cost: up });
   }
   for (const t of busy.slice(0, 3)) {
     const lv = w.levelCost(t);
-    if (lv !== null && lv <= w.gold) moves.push({ k: 'level', c: t.c, r: t.r, cost: lv });
+    if (lv !== null && lv <= budget) moves.push({ k: 'level', c: t.c, r: t.r, cost: lv });
   }
   // Sockets: the two best cards for each tower with a slot open.
   let sockets = 0;
@@ -269,7 +276,7 @@ function candidates(w: World, ctx: Ctx): Move[] {
     const cards = [...w.cards].sort((a, b) => RARITY_WEIGHT[b.rarity] * rating(t.def.id, b.power) - RARITY_WEIGHT[a.rarity] * rating(t.def.id, a.power)).slice(0, 2);
     for (const c of cards) {
       const cost = w.socketCost(t, c.rarity);
-      if (cost !== null && cost <= w.gold) {
+      if (cost !== null && cost <= budget) {
         moves.push({ k: 'socket', c: t.c, r: t.r, card: c.uid, cost });
         sockets++;
       }
@@ -308,41 +315,62 @@ function bossAhead(w: World, ctx: Ctx, ahead = 5): number | null {
  *      if it would get through (bosses need building for well ahead);
  *   4. the coming wave at the HP where the defence starts to bend, for margin.
  */
-function objective(w: World, ctx: Ctx, snap: WorldSave, from: number): { stress: number; base: Probe; wave?: number; why: string } {
+interface Objective { stress: number; base: Probe; wave?: number; why: string; urgent: boolean; income: number }
+
+function objective(w: World, ctx: Ctx, snap: WorldSave, from: number): Objective {
   const truth = rollout(ctx, snap, null, 1)!;
-  if (truth.lives > 0) return { stress: 1, base: truth, why: 'leak' };
+  const income = truth.gold;
+  if (truth.lives > 0) return { stress: 1, base: truth, why: 'leak', urgent: true, income };
   const near = rollout(ctx, snap, null, ctx.stress)!;
-  if (near.lives > 0) return { stress: ctx.stress, base: near, why: `@x${ctx.stress}` };
+  if (near.lives > 0) return { stress: ctx.stress, base: near, why: `@x${ctx.stress}`, urgent: false, income };
   const boss = bossAhead(w, ctx);
   if (boss) {
     const preview = rollout(ctx, snap, null, 1, { wave: boss })!;
-    if (preview.lives > 0) return { stress: 1, base: preview, wave: boss, why: `boss ${boss}` };
+    if (preview.lives > 0) return { stress: 1, base: preview, wave: boss, why: `boss ${boss}`, urgent: false, income };
   }
   const bend = bendingPoint(ctx, snap, from);
-  return { ...bend, why: `@x${bend.stress.toFixed(1)}` };
+  return { ...bend, why: `@x${bend.stress.toFixed(1)}`, urgent: false, income };
 }
 
+/**
+ * Spend the gold on the moves that cut the threat most per gold. Unless the
+ * coming wave would leak, moves the next wave's income would pay for are
+ * weighed too: when one of those is clearly better per gold than anything
+ * affordable now, it saves for it rather than spending on something worse.
+ */
 function plan(w: World, ctx: Ctx): string[] {
   const done: string[] = [];
   let from = ctx.stress;
   for (let step = 0; step < 20; step++) {
-    const moves = candidates(w, ctx);
+    const snap = w.snapshot();
+    const { stress, base, wave, why, urgent, income } = objective(w, ctx, snap, from);
+    if (stress > ctx.stress) from = stress;
+    const moves = candidates(w, ctx, urgent ? w.gold : w.gold + income);
     if (!moves.length) {
       if (shop(w)) continue;
       break;
     }
-    const snap = w.snapshot();
-    const { stress, base, wave, why } = objective(w, ctx, snap, from);
-    if (stress > ctx.stress) from = stress;
     const s0 = score(base);
     let best: { m: Move; value: number; gain: number } | null = null;
+    let later: { m: Move; perGold: number } | null = null;
+    let nowPerGold = 0;
     for (const m of moves) {
       const p = rollout(ctx, snap, m, stress, { wave, bound: s0 });
       if (!p) continue;
       const gain = s0 - score(p);
       if (gain <= 0.05) continue;
+      if (m.cost > w.gold) {
+        if (!later || gain / m.cost > later.perGold) later = { m, perGold: gain / m.cost };
+        continue;
+      }
+      nowPerGold = Math.max(nowPerGold, gain / m.cost);
       const value = gain / Math.pow(m.cost, 0.6);
       if (!best || value > best.value) best = { m, value, gain };
+    }
+    // Save only for something clearly better per gold than anything it can buy now.
+    if (later && later.perGold > 1.5 * nowPerGold) {
+      done.push(`saves for ${describe(later.m, w)} (${why})`);
+      break;
     }
     if (!best) {
       // Nothing worth buying: maybe a pack would give the sockets something to use.
@@ -497,7 +525,11 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
         console.log(`recorded ${script!.steps.length} waves to ${record}`);
       }
     } else {
-      const queue = maps.flatMap((m) => diffs.flatMap((d) => Array.from({ length: seeds }, (_, s) => [m, d, String((s + 1) * 7919)])));
+      // Longest games first (more waves, harder), so the workers finish together.
+      const length = (m: string, d: string) => MAP_BY_ID.get(m)!.waves * 10 + DIFFICULTIES.findIndex((x) => x.id === d);
+      const queue = maps
+        .flatMap((m) => diffs.flatMap((d) => Array.from({ length: seeds }, (_, s) => [m, d, String((s + 1) * 7919)])))
+        .sort((a, b) => length(b[0], b[1]) - length(a[0], a[1]));
       const results: Result[] = [];
       console.log(header);
       let running = 0;
