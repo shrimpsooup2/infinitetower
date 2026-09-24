@@ -1,7 +1,8 @@
 // Enemy spawning, abilities and movement.
 
 import type { World } from './world.ts';
-import type { DamageType, Enemy, EnemyDef, SpawnMod } from './types.ts';
+import type { BeamLook, DamageType, Enemy, EnemyDef, SpawnMod } from './types.ts';
+import { DAMAGE_TYPES } from '../effects/types.ts';
 import { MOD_HP } from '../content/waves.ts';
 import { ENEMY_BY_ID } from '../content/enemies.ts';
 import { dealDamage, refreshDerived, tickStatuses, updatePos, pathOf } from './combat.ts';
@@ -10,6 +11,7 @@ import { dist2 } from './math.ts';
 import { RULES } from '../content/rules.ts';
 
 const TICKS = RULES.tickRate;
+const SPIKE: BeamLook = { style: 'zigzag', width: [0.16, 0.05], color: 'base', core: '#ffffff', glow: true, amplitude: 0.12, duration: 0.35 };
 
 export interface SpawnOpts {
   dist?: number;
@@ -50,7 +52,7 @@ export function spawnEnemy(w: World, defId: string, pathIdx: number, waveN: numb
     hist: new Float32Array(30), histIdx: 0, histTimer: 0, lastRewindTick: -9999, shrunk: false, special: o.revived ? 1 : 0,
     bounty: Math.max(1, Math.round(def.bounty * bountyMult)), lives: mods.includes('elite') ? def.lives * 2 : def.lives, killer: 0, hitFlash: 0, hitBy: new Set(), spawnTick: w.tick, tenacity: def.tenacity,
     hasteMult: 1, visScale: 1, waveN, zoneSpeed: 1, zoneDmg: 1, hpHist: new Float32Array(6), flying, traitSet: new Set(def.traits),
-    mods,
+    mods, dashUntil: 0, shed: 0, spawned: 0, ghost: -1, flipBack: false,
   };
   if (flying) e.traitSet.add('flying');
   if (mods.includes('stealth')) e.traitSet.add('stealth');
@@ -110,7 +112,70 @@ function abilities(w: World, e: Enemy, dt: number): void {
         e.timers[i] -= dt;
         if (e.timers[i] > 0) break;
         e.timers[i] = a.every ?? 1.6;
-        spawnEnemy(w, a.enemy ?? 'mini', e.pathIdx, e.waveN, { dist: Math.max(0, e.dist - 0.3) });
+        // A spawn with a count is a fixed train (the Apeirogon's links), not a stream.
+        if (a.count !== undefined && e.spawned >= a.count) break;
+        e.spawned++;
+        spawnEnemy(w, a.enemy ?? 'mini', e.pathIdx, e.waveN, { dist: Math.max(0, e.dist - 0.3), mods: e.air ? ['flying'] : [] });
+        break;
+      }
+      case 'dash': {
+        e.timers[i] -= dt;
+        if (e.timers[i] > 0) break;
+        e.timers[i] = a.every ?? 5;
+        e.dashUntil = w.tick + Math.round((a.duration ?? 0.6) * TICKS);
+        if (w.fxOn) w.fx.push({ k: 'text', x: e.x, y: e.y - e.size - 0.2, text: 'dash', color: '#ffe869' });
+        break;
+      }
+      case 'antipode': {
+        // Two places at once: it shows a ghost where it will be, then swaps to it,
+        // going ahead one time and part of the way back the next.
+        e.timers[i] -= dt;
+        const p = pathOf(w, e);
+        const jump = e.flipBack ? -(a.amount ?? 2) * 0.6 : (a.amount ?? 2);
+        e.ghost = Math.max(0, Math.min(p.length - 0.1, e.dist + jump));
+        if (e.timers[i] > 0) break;
+        e.timers[i] = a.every ?? 3;
+        const x0 = e.x, y0 = e.y;
+        e.dist = e.ghost;
+        e.flipBack = !e.flipBack;
+        updatePos(w, e);
+        if (w.fxOn) w.fx.push({ k: 'blink', x1: x0, y1: y0, x2: e.x, y2: e.y });
+        break;
+      }
+      case 'cycle_immunity': {
+        e.timers[i] -= dt;
+        if (e.timers[i] > 0 && e.immune) break;
+        e.timers[i] = a.every ?? 5;
+        const k = e.immune ? DAMAGE_TYPES.indexOf(e.immune) + 1 : e.id;
+        e.immune = DAMAGE_TYPES[k % DAMAGE_TYPES.length];
+        break;
+      }
+      case 'spikes': {
+        e.timers[i] -= dt;
+        if (e.timers[i] > 0) break;
+        e.timers[i] = a.every ?? 6;
+        const r = a.radius ?? 3;
+        const near = w.towers
+          .filter((t) => dist2(t.x, t.y, e.x, e.y) <= r * r)
+          .sort((p, q) => dist2(p.x, p.y, e.x, e.y) - dist2(q.x, q.y, e.x, e.y))
+          .slice(0, a.count ?? 1);
+        for (const t of near) {
+          t.disabledUntil = Math.max(t.disabledUntil, w.tick + Math.round((a.duration ?? 2) * TICKS));
+          if (w.fxOn) {
+            w.fx.push({ k: 'beam', x1: e.x, y1: e.y, x2: t.x, y2: t.y, look: SPIKE, colors: { base: e.def.color, secondary: '#ffffff', tertiary: '#ffffff' }, dcolor: e.def.color, dur: 0.35 });
+          }
+        }
+        break;
+      }
+      case 'shed': {
+        // Sheds its pieces evenly as it loses HP (4 pieces: at 80, 60, 40 and 20%).
+        const n = a.count ?? 3;
+        const due = Math.min(n, Math.floor((1 - e.hp / e.maxHp) * (n + 1)));
+        while (e.shed < due) {
+          e.shed++;
+          spawnEnemy(w, a.enemy ?? 'p3', e.pathIdx, e.waveN, { dist: Math.max(0, e.dist - 0.3), lateral: (e.shed % 2 ? -1 : 1) * 0.2, mods: e.air ? ['flying'] : [] });
+          if (w.fxOn) w.vfxAt(BUILTIN_VFX.get('shockwave')!, e.x, e.y, 1);
+        }
         break;
       }
       case 'revive': {
@@ -232,7 +297,8 @@ export function updateEnemies(w: World, dt: number): void {
     if (!e.alive) continue;
     let moved = 0;
     if (!e.hardCC) {
-      const v = e.speed * e.moveMult * e.hasteMult;
+      const dash = w.tick < e.dashUntil ? e.def.abilities.find((a) => a.kind === 'dash')?.amount ?? 3 : 1;
+      const v = e.speed * e.moveMult * e.hasteMult * dash;
       moved = e.reverse ? -v * 0.6 * dt : v * dt;
       e.dist = Math.max(0, e.dist + moved);
     }

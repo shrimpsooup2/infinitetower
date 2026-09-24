@@ -218,6 +218,14 @@ HP, and from 8 sides up, armour. The first eight are plain. The last four each h
 | Tridecagon (13) | Heals nearby shapes |
 | Tetradecagon (14) | Blinks forward and phases briefly |
 
+Stranger polygons join them:
+
+| Shape | Wave | What it does |
+| --- | --- | --- |
+| Digon {2} | 2 | Two sides meeting at both ends: a tiny, fragile, very fast lens |
+| Pentagram {5/2} | 5 | A star polygon whose sides cross; dashes at 3x speed every 4.5 s |
+| Hexagram {6/2} | 8 | A compound of two Triangles; splits into both when destroyed |
+
 ### 5.2 Solidspace (3D): waves 21–40
 
 Polyhedra, counted by faces. The Platonic solids (Tetrahedron, Cube, Octahedron,
@@ -234,27 +242,62 @@ have powers whose **strength scales with their face count**:
 | Truncated Icosahedron | 32 | Drops Tetrahedra, faster with more faces |
 | Rhombicosidodecahedron | 62 | Revives fallen shapes and adapts its resistances |
 
+Stranger solids:
+
+| Solid | Wave | What it does |
+| --- | --- | --- |
+| Stella Octangula | 23 | Two Tetrahedra run through each other (a compound); breaks into both |
+| Toroid | 26 | A polyhedron with a hole: one direct hit in three flies through it (DoTs, zones and blasts still land) |
+| Small Stellated Dodecahedron | 28 | A Kepler–Poinsot star; every 7 s it throws a spike that jams the nearest tower |
+| Hemicube | 33 | Half a cube glued to its own opposite: it lives in two places at once, showing a ghost where it will swap to (ahead, then part of the way back) |
+| Snub Cube | 36 | Chiral; immune to one damage type at a time, switching every 5 s |
+
 ### 5.3 Hyperspace (4D): waves 41–60
 
 Polytopes, counted by cells: the 5-Cell, 3-3 Duoprism, Tesseract, 5-5 Duoprism, 16-Cell and
 24-Cell. All of them periodically **phase** through the 4th axis and can't be hit directly
 while phased, though damage over time and zones still work. Their powers scale with cell
 count (shields, splitting, healing, haste auras, tower-stomping, adaptive resistances).
+Two stranger ones join them: the **Rectified 5-Cell** (wave 44; five tetrahedra and five
+octahedra, and it dashes) and the **Great Duoprism {5/2}×{5/2}** (wave 53; two pentagrams
+multiplied through each other, and it jams the 2 nearest towers every 7 s).
 
 ### 5.4 Bosses
+
+Every act ends in the limit of its dimension (waves 20, 40 and 60). The midpoints (waves 10, 30
+and 50) bring one of three bosses, and **each map has its own**, so the campaign meets all of
+them:
 
 | Wave | Boss | Signature |
 | --- | --- | --- |
 | 10 | The Icosagon | Stomps towers offline |
+| 10 | The Apeirogon | An infinite zigzag: its head drags a chain of 12 links, each its own shape, and hastes them |
+| 10 | The Great Heptagram {7/3} | Dashes, and sheds a Pentagram at every fifth of its HP |
 | 20 | The Circle | Sheds Dodecagons at 66% HP and rolls faster below 33% |
 | 30 | The Geodesic | Rewinds its own HP once, hastes nearby shapes |
+| 30 | The Great Stellated Dodecahedron | Spears the 3 nearest towers every 5 s, and sheds Small Stellated Dodecahedra |
+| 30 | The Compound of Five Tetrahedra | A new immunity every 6 s, sheds Tetrahedra at 80/60/40/20%, and breaks into five more |
 | 40 | The Sphere | Phases and stomps |
-| 50 | The 600-Cell | Spawns, stomps and phases |
+| 50 | The 600-Cell | Spawns 5-Cells, stomps and phases |
+| 50 | The 120-Cell | Its dual: births Dodecahedra, heals everything around it, phases |
+| 50 | The Grand Antiprism | The strangest uniform polytope: 30% of hits pass through it, it flickers between two places, and it sheds Rectified 5-Cells |
 | 60 | The Glome | The hypersphere: everything at once |
 
-Bosses shrug off crowd control (tenacity) and cost many lives if they leak.
+In endless mode a 4D boss comes every 10 waves. Bosses shrug off crowd control (tenacity) and
+cost many lives if they leak.
 
-### 5.5 Group modifiers
+### 5.5 The Shape Dex
+
+The **Shape Dex** (title menu) lists every shape, numbered like a field guide. Shapes you
+haven't met in a run are dark silhouettes. Once one crosses your map, it is entered with:
+
+- a turning model;
+- its description, traits and abilities;
+- its base stats;
+- where it turns up (its introduction wave, or which maps it is the boss of);
+- when you first met it, and how many you have destroyed.
+
+### 5.6 Group modifiers
 
 Variety comes from modifiers that can be applied to any group of shapes:
 
@@ -266,12 +309,12 @@ Variety comes from modifiers that can be applied to any group of shapes:
 
 Endless mode (past wave 60) stacks global mutators (shielded, swift, regen, armored, swarm).
 
-### 5.6 Waves
+### 5.7 Waves
 
 Waves are generated per (map, wave number) from an HP budget that grows about 15% per wave:
 13% from the budget plus 2% from a global HP creep. They are deterministic, so every player
-sees the same waves on the same map. Each new shape gets an **introduction wave** where it
-stars. Every 5th wave is a **rush** (swift, flying or swarming variants). Boss waves bring
+sees the same waves on the same map. A shape that splits is budgeted with the shapes it
+splits into. Each new shape gets an **introduction wave** where it stars. Every 5th wave is a **rush** (swift, flying or swarming variants). Boss waves bring
 escorts. Older shapes mix back in as filler. The top bar previews the next wave's shapes and
 modifiers.
 

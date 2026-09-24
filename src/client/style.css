@@ -449,3 +449,34 @@ canvas#game { position: fixed; inset: 0; display: block; }
 .shopitem { display: flex; flex-direction: column; align-items: center; gap: 4px; width: 168px; }
 .shopitem.locked .packart { filter: grayscale(0.7) brightness(0.8); animation: none; }
 .shopitem.locked .fusion-name, .shopitem.locked .info-card { opacity: 0.6; }
+
+/* Shape Dex */
+.dex { width: min(1180px, 96vw); display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 14px; align-items: start; }
+.dex-list { display: flex; flex-direction: column; gap: 14px; }
+.dex-focus {
+  position: sticky; top: 64px; display: flex; flex-direction: column; gap: 10px; align-items: center;
+  background: var(--panel-strong); border-radius: 12px; padding: 12px; box-shadow: 0 4px 0 rgba(0, 0, 0, 0.25);
+}
+@media (max-width: 860px) {
+  .dex { grid-template-columns: 1fr; }
+  .dex-focus { position: static; order: -1; }
+}
+.dex-focus canvas { flex-shrink: 0; border-radius: 12px; background: radial-gradient(circle, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0) 70%); }
+.dex-info { align-self: stretch; display: flex; flex-direction: column; gap: 6px; text-shadow: var(--outline); }
+.dex-info h2 { margin: 0; font-size: 26px; }
+.dex-info .meta { font-size: 13px; opacity: 0.92; }
+.dex-no { font-size: 12px; opacity: 0.8; letter-spacing: 1px; }
+.dex-blurb { font-size: 14px; font-weight: 500; line-height: 1.35; }
+.dex-stats { width: 100%; }
+.dex-section h2 { margin: 0 0 8px; font-size: 20px; text-shadow: var(--outline); }
+.dex-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 8px; }
+.dex-card {
+  position: relative; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 4px 6px; cursor: pointer;
+  background: var(--panel-strong); border-radius: 10px; border: 3px solid transparent; transition: transform 0.1s;
+}
+.dex-card:hover { transform: translateY(-3px); }
+.dex-card.sel { border-color: #fff; }
+.dex-card .no { position: absolute; top: 3px; left: 6px; font-size: 9px; opacity: 0.7; text-shadow: var(--outline); }
+.dex-card .nm { font-size: 11px; text-align: center; line-height: 1.15; text-shadow: var(--outline); }
+.dex-card.unseen canvas { filter: brightness(0) opacity(0.45); }
+.dex-card.unseen .nm { opacity: 0.6; }

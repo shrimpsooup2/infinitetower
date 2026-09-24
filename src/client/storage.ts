@@ -64,6 +64,9 @@ export interface Progress {
   runs: number;
   /** Campaign stages already revealed on the world map (for the reveal animation). */
   revealed?: number;
+  /** Shape Dex: when each enemy was first seen, and how many of each you have destroyed. */
+  seen?: Record<string, number>;
+  defeated?: Record<string, number>;
 }
 
 export function loadProgress(): Progress {
@@ -72,6 +75,36 @@ export function loadProgress(): Progress {
 
 export function saveProgress(p: Progress): void {
   write('it.progress.v1', p);
+}
+
+/**
+ * What the Shape Dex remembers: every enemy you have met (saved at once, it is
+ * rare) and how many of each you destroyed (batched, saved each wave).
+ */
+export class DexLog {
+  private seen: Set<string>;
+  private pending = new Map<string, number>();
+  constructor() {
+    this.seen = new Set(Object.keys(loadProgress().seen ?? {}));
+  }
+  see(id: string): void {
+    if (this.seen.has(id)) return;
+    this.seen.add(id);
+    const p = loadProgress();
+    (p.seen ??= {})[id] = Date.now();
+    saveProgress(p);
+  }
+  defeat(id: string): void {
+    this.pending.set(id, (this.pending.get(id) ?? 0) + 1);
+  }
+  flush(): void {
+    if (!this.pending.size) return;
+    const p = loadProgress();
+    const d = (p.defeated ??= {});
+    for (const [id, n] of this.pending) d[id] = (d[id] ?? 0) + n;
+    this.pending.clear();
+    saveProgress(p);
+  }
 }
 
 export function markRevealed(n: number): void {

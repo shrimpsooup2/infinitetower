@@ -21,7 +21,7 @@ import { enemyIcon } from './render/enemy-art.ts';
 import { h, mount, clear, tone, fmtNum, fmtDate } from './ui/dom.ts';
 import type { Audio } from './audio.ts';
 import type { ForgeClient } from './forge.ts';
-import { type Codex, type Settings, saveRun, clearRun, recordRun, saveSettings } from './storage.ts';
+import { type Codex, type Settings, DexLog, saveRun, clearRun, recordRun, saveSettings } from './storage.ts';
 import { colorsFor } from '../sim/world.ts';
 import { Tutorial } from './tutorial.ts';
 
@@ -71,6 +71,7 @@ export class Game {
   private tut: Tutorial | null = null;
   private modalPause = false;
   private packKey = '';
+  private readonly dex = new DexLog();
   private listeners: [EventTarget, string, EventListener][] = [];
 
   constructor(d: GameDeps, map: MapDef, diff: DifficultyDef['id'], save: WorldSave | null) {
@@ -120,6 +121,7 @@ export class Game {
   }
 
   stop(): void {
+    this.dex.flush();
     cancelAnimationFrame(this.raf);
     for (const [t, e, f] of this.listeners) t.removeEventListener(e, f);
     this.listeners = [];
@@ -143,9 +145,13 @@ export class Game {
         w.step();
         this.acc -= DT;
         steps++;
+        for (const ev of w.fx) if (ev.k === 'death') this.dex.defeat(ev.e.def.id);
         this.r.consume(w, this.renderOpts());
         if (w.waveN !== wasWave) this.d.audio.play('wave', 1, 0.6);
-        if (hadActive && !w.active.length && w.phase === 'running') this.autosave();
+        if (hadActive && !w.active.length && w.phase === 'running') {
+          this.autosave();
+          this.dex.flush();
+        }
       }
       if (steps >= max) this.acc = 0;
     } else {
@@ -156,6 +162,7 @@ export class Game {
     if (this.uiTimer <= 0) {
       this.uiTimer = 0.1;
       this.refresh();
+      for (const e of w.enemies) this.dex.see(e.def.id);
     }
     if ((w.phase === 'victory' || w.phase === 'defeat') && !this.ended) this.end();
   }
@@ -942,6 +949,7 @@ export class Game {
 
   private end(): void {
     this.ended = true;
+    this.dex.flush();
     const w = this.w;
     const won = w.phase === 'victory';
     if (this.tut) {

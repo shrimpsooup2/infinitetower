@@ -24,8 +24,10 @@ export interface Model {
   dim: 3 | 4;
   verts: Vec[];
   edges: [number, number][];
-  /** Faces of a 3D convex solid. */
+  /** Faces of a 3D solid. */
   faces: Face[];
+  /** Star solids, compounds and toroids: faces must be depth-sorted, not just culled. */
+  concave?: boolean;
 }
 
 function permutations(a: number[], evenOnly: boolean): number[][] {
@@ -175,6 +177,197 @@ function geodesic(): Vec[] {
   return out;
 }
 
+// ------------------------------------------------------------ non-convex solids
+
+const scale = (v: Vec, k: number): Vec => v.map((x) => x * k);
+const add3 = (a: Vec, b: Vec): Vec => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+
+/** A solid from explicit faces; each normal points away from `inside` (default the centre). */
+function faceted(verts: Vec[], faces: number[][], inside: (f: number[]) => Vec = () => [0, 0, 0]): Model {
+  let m = 0;
+  for (const v of verts) m = Math.max(m, Math.hypot(v[0], v[1], v[2]));
+  const vs = verts.map((v) => scale(v, 1 / m));
+  const fs: Face[] = faces.map((f) => {
+    let n = unit3(cross(sub(vs[f[1]], vs[f[0]]), sub(vs[f[2]], vs[f[0]])));
+    const c = [0, 1, 2].map((a) => f.reduce((sum, i) => sum + vs[i][a], 0) / f.length);
+    const inner = scale(inside(f), 1 / m);
+    if (dot(n, sub(c, inner)) < 0) n = scale(n, -1);
+    return { v: f, n };
+  });
+  const seen = new Set<string>();
+  const edges: [number, number][] = [];
+  for (const f of faces) {
+    for (let i = 0; i < f.length; i++) {
+      const a = f[i], b = f[(i + 1) % f.length];
+      const k = a < b ? `${a},${b}` : `${b},${a}`;
+      if (!seen.has(k)) { seen.add(k); edges.push(a < b ? [a, b] : [b, a]); }
+    }
+  }
+  return { dim: 3, verts: vs, edges, faces: fs, concave: true };
+}
+
+const unit3 = (v: Vec): Vec => { const l = Math.hypot(v[0], v[1], v[2]) || 1; return [v[0] / l, v[1] / l, v[2] / l]; };
+
+/** Raise a pyramid on every face of a convex core: a stellation's spikes. `k` = apex distance / inradius. */
+function stellate(core: Vec[], k: number): Model {
+  const faces = hullFaces(core);
+  const verts = [...core];
+  const out: number[][] = [];
+  for (const f of faces) {
+    const inr = dot(f.n, core[f.v[0]]);
+    verts.push(scale(f.n, inr * k));
+    const apex = verts.length - 1;
+    for (let i = 0; i < f.v.length; i++) out.push([f.v[i], f.v[(i + 1) % f.v.length], apex]);
+  }
+  return faceted(verts, out);
+}
+
+/** Tetrahedra among a vertex set: every 4 points at the same mutual distance `d`. */
+function tetrahedra(v: Vec[], d: number): number[][] {
+  const near = (a: number, b: number) => Math.abs(Math.hypot(...sub(v[a], v[b])) - d) < 1e-6;
+  const out: number[][] = [];
+  const n = v.length;
+  for (let a = 0; a < n; a++) for (let b = a + 1; b < n; b++) {
+    if (!near(a, b)) continue;
+    for (let c = b + 1; c < n; c++) {
+      if (!near(a, c) || !near(b, c)) continue;
+      for (let e = c + 1; e < n; e++) if (near(a, e) && near(b, e) && near(c, e)) out.push([a, b, c, e]);
+    }
+  }
+  return out;
+}
+
+/** Five tetrahedra sharing the dodecahedron's vertices, of one handedness (an exact cover). */
+function compoundOfFive(): Model {
+  const v = [...gen([[1, 1, 1]], 'none'), ...gen([[0, 1 / PHI, PHI]], 'even')];
+  const all = tetrahedra(v, 2 * Math.SQRT2);
+  const pick: number[][] = [];
+  const used = new Set<number>();
+  const search = (from: number): boolean => {
+    if (pick.length === 5) return true;
+    for (let i = from; i < all.length; i++) {
+      if (all[i].some((q) => used.has(q))) continue;
+      pick.push(all[i]);
+      all[i].forEach((q) => used.add(q));
+      if (search(i + 1)) return true;
+      pick.pop();
+      all[i].forEach((q) => used.delete(q));
+    }
+    return false;
+  };
+  search(0);
+  const faces: number[][] = [];
+  for (const t of pick) for (let i = 0; i < 4; i++) faces.push(t.filter((_, j) => j !== i));
+  // Each face points away from its own tetrahedron's centre, which is the origin here.
+  return faceted(v, faces);
+}
+
+/** Two interpenetrating tetrahedra: the stella octangula. */
+function stellaOctangula(): Model {
+  const a = [[1, 1, 1], [1, -1, -1], [-1, 1, -1], [-1, -1, 1]];
+  const v = [...a, ...a.map((q) => scale(q, -1))];
+  const faces: number[][] = [];
+  for (const base of [0, 4]) for (let i = 0; i < 4; i++) faces.push([0, 1, 2, 3].filter((j) => j !== i).map((j) => base + j));
+  return faceted(v, faces);
+}
+
+/** A square picture-frame torus: 16 faces around a hole (Euler characteristic 0). */
+function toroid(): Model {
+  const A = 1, B = 0.46, T = 0.3;
+  const sq = [[1, 1], [-1, 1], [-1, -1], [1, -1]];
+  const v: Vec[] = [];
+  for (const [x, y] of sq) v.push([x * A, y * A, T], [x * A, y * A, -T], [x * B, y * B, T], [x * B, y * B, -T]);
+  const O = (i: number, top: boolean) => (i % 4) * 4 + (top ? 0 : 1);
+  const I = (i: number, top: boolean) => (i % 4) * 4 + (top ? 2 : 3);
+  const faces: number[][] = [];
+  const insides: Vec[] = [];
+  for (let i = 0; i < 4; i++) {
+    const [x0, y0] = sq[i], [x1, y1] = sq[(i + 1) % 4];
+    const mid = [(x0 + x1) / 2, (y0 + y1) / 2];
+    const ring = [mid[0] * (A + B) / 2, mid[1] * (A + B) / 2];
+    faces.push([O(i, true), O(i + 1, true), I(i + 1, true), I(i, true)]); insides.push([ring[0], ring[1], -1]);
+    faces.push([O(i, false), O(i + 1, false), I(i + 1, false), I(i, false)]); insides.push([ring[0], ring[1], 1]);
+    faces.push([O(i, true), O(i, false), O(i + 1, false), O(i + 1, true)]); insides.push([ring[0], ring[1], 0]);
+    faces.push([I(i, true), I(i, false), I(i + 1, false), I(i + 1, true)]); insides.push([mid[0] * A, mid[1] * A, 0]);
+  }
+  const at = new Map(faces.map((f, i) => [f.join(','), insides[i]]));
+  return faceted(v, faces, (f) => at.get(f.join(','))!);
+}
+
+/** The snub cube (one handedness): even / odd permutations of (1, 1/t, t), t the tribonacci constant. */
+function snubCube(): Vec[] {
+  const t = 1.839286755214161;
+  const base = [1, 1 / t, t];
+  const out: Vec[] = [];
+  const perms: [number[], number][] = [[[0, 1, 2], 0], [[1, 2, 0], 0], [[2, 0, 1], 0], [[1, 0, 2], 1], [[0, 2, 1], 1], [[2, 1, 0], 1]];
+  for (const [p, parity] of perms) {
+    for (let m = 0; m < 8; m++) {
+      const minus = [m & 1, (m >> 1) & 1, (m >> 2) & 1];
+      if ((minus[0] + minus[1] + minus[2]) % 2 !== parity) continue;
+      out.push(p.map((k, i) => base[k] * (minus[i] ? -1 : 1)));
+    }
+  }
+  return out;
+}
+
+/** The 120-cell: 600 vertices (radius 2 sqrt 2 before normalising). */
+function cell120(): Vec[] {
+  const P = PHI, S5 = Math.sqrt(5), iP = 1 / PHI;
+  return [
+    ...gen([[0, 0, 2, 2]], 'all'),
+    ...gen([[1, 1, 1, S5], [iP * iP, P, P, P], [iP, iP, iP, P * P]], 'all'),
+    ...gen([[0, iP * iP, 1, P * P], [0, iP, P, S5], [iP, 1, P, 2]], 'even'),
+  ];
+}
+
+/** The grand antiprism: the 600-cell with two completely orthogonal rings of 10 vertices removed. */
+function grandAntiprism(): Vec[] {
+  const v = normalize(BUILDERS.cell600().verts);
+  const inPlane = (p: Vec, a: Vec, b: Vec) => {
+    const pa = p.reduce((s2, x, i) => s2 + x * a[i], 0), pb = p.reduce((s2, x, i) => s2 + x * b[i], 0);
+    return Math.hypot(...p.map((x, i) => x - pa * a[i] - pb * b[i])) < 1e-6;
+  };
+  const gram = (a: Vec, b: Vec): Vec => {
+    const d = a.reduce((s2, x, i) => s2 + x * b[i], 0);
+    const c = b.map((x, i) => x - d * a[i]);
+    const l = Math.hypot(...c);
+    return c.map((x) => x / l);
+  };
+  // One great decagon: a vertex, its nearest neighbour, and everything in their plane.
+  const a = v[0];
+  let nb = v[1], best = -2;
+  for (const q of v.slice(1)) {
+    const d = q.reduce((s2, x, i) => s2 + x * a[i], 0);
+    if (d > best && d < 0.999) { best = d; nb = q; }
+  }
+  const b = gram(a, nb);
+  // The orthogonal plane: spanned by two vertices perpendicular to both a and b.
+  const perp = v.filter((q) => Math.abs(q.reduce((s2, x, i) => s2 + x * a[i], 0)) < 1e-6 && Math.abs(q.reduce((s2, x, i) => s2 + x * b[i], 0)) < 1e-6);
+  const c = perp[0], e = gram(c, perp.find((q) => Math.abs(q.reduce((s2, x, i) => s2 + x * c[i], 0)) < 0.999 && Math.abs(q.reduce((s2, x, i) => s2 + x * c[i], 0)) > 0.5) ?? perp[1]);
+  return v.filter((q) => !inPlane(q, a, b) && !inPlane(q, c, e));
+}
+
+/** A star duoprism {p/k} x {p/k}: the p x p duoprism's vertices joined by star edges. */
+function starDuoprism(p: number, k: number): Model {
+  const verts = normalize(duoprism(p, p));
+  const edges: [number, number][] = [];
+  for (let i = 0; i < p; i++) {
+    for (let j = 0; j < p; j++) {
+      edges.push([i * p + j, ((i + k) % p) * p + j]);
+      edges.push([i * p + j, i * p + ((j + k) % p)]);
+    }
+  }
+  return { dim: 4, verts, edges, faces: [] };
+}
+
+/** The rectified 5-cell: the midpoints of the 5-cell's edges. */
+function rectified5(): Vec[] {
+  const c = BUILDERS.cell5().verts;
+  const out: Vec[] = [];
+  for (let i = 0; i < c.length; i++) for (let j = i + 1; j < c.length; j++) out.push(c[i].map((x, k) => (x + c[j][k]) / 2));
+  return out;
+}
+
 const cache = new Map<string, Model>();
 
 const BUILDERS: Record<string, () => Model> = {
@@ -197,6 +390,16 @@ const BUILDERS: Record<string, () => Model> = {
   duo55: () => model(4, duoprism(5, 5)),
   cell16: () => model(4, gen([[1, 0, 0, 0]], 'all')),
   cell24: () => model(4, gen([[1, 1, 0, 0]], 'all')),
+  stella_octangula: () => stellaOctangula(),
+  small_stellated_dodecahedron: () => stellate([...gen([[1, 1, 1]], 'none'), ...gen([[0, 1 / PHI, PHI]], 'even')], Math.sqrt(5)),
+  great_stellated_dodecahedron: () => stellate(gen([[0, 1, PHI]], 'even'), 2.7),
+  compound5: () => compoundOfFive(),
+  toroid: () => toroid(),
+  snub_cube: () => model(3, snubCube()),
+  rect5: () => model(4, rectified5()),
+  star_duo: () => starDuoprism(5, 2),
+  cell120: () => model(4, cell120()),
+  grand_antiprism: () => model(4, grandAntiprism()),
   cell600: () => model(4, [
     ...gen([[0.5, 0.5, 0.5, 0.5]], 'none'),
     ...gen([[1, 0, 0, 0]], 'all'),
@@ -350,8 +553,14 @@ export function drawSolid(ctx: Ctx2D, m: Model, x: number, y: number, r: number,
   });
   const base = rgbOf(color);
   ctx.lineJoin = 'round';
-  // Convex solid: back-face culling is all the sorting it needs.
-  for (const f of m.faces) {
+  // A convex solid only needs back-face culling; star solids, compounds and
+  // toroids also paint their front faces far to near.
+  let faces = m.faces;
+  if (m.concave) {
+    const depth = (f: Face) => f.v.reduce((a, i) => a + R[i][2], 0) / f.v.length;
+    faces = faces.filter((f) => rot(f.n)[2] > 0.02).sort((a, b) => depth(a) - depth(b));
+  }
+  for (const f of faces) {
     const nf = rot(f.n);
     if (nf[2] <= 0.02) continue;
     // Per-vertex colours from a normal bent toward the vertex, so light runs across the face.
@@ -391,8 +600,17 @@ export function drawSolid(ctx: Ctx2D, m: Model, x: number, y: number, r: number,
       ctx.fillStyle = g;
       ctx.fill();
     }
+    if (m.concave && outline > 0) {
+      // Facet lines keep overlapping spikes readable.
+      ctx.beginPath();
+      f.v.forEach((i, j) => (j ? ctx.lineTo(P[i][0], P[i][1]) : ctx.moveTo(P[i][0], P[i][1])));
+      ctx.closePath();
+      ctx.strokeStyle = 'rgba(25,25,40,0.4)';
+      ctx.lineWidth = Math.max(0.6, outline * 0.6);
+      ctx.stroke();
+    }
   }
-  if (outline > 0) {
+  if (outline > 0 && !m.concave) {
     const h = hull(P);
     ctx.beginPath();
     h.forEach((p, i) => (i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])));

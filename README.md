@@ -24,8 +24,11 @@ number. From then on, every player who makes that combination gets the same fusi
   growing grow too; each fusion's explanation shows its real numbers at the tower's level.
   Levels make that tower's next cards and tier cost more, so you choose what to grow first.
 - **Shapes that climb through dimensions.** The first 20 waves are 2D polygons (triangle to
-  tetradecagon), then 3D polyhedra rendered like early-2000s CG, then 4D polytopes that phase in
-  and out of reach.
+  tetradecagon, plus stars and a digon), then 3D polyhedra rendered like early-2000s CG
+  (Kepler–Poinsot stars, compounds, a toroid that shots fly through, a hemicube that lives in
+  two places), then 4D polytopes that phase in and out of reach. Twelve bosses, from the
+  Apeirogon to the Grand Antiprism, vary by map, and the Shape Dex records every shape you
+  meet.
 - **A complete game on its own.** It has a guided tutorial, a 3-act campaign of 15 themed maps, 4
   difficulties and endless mode. Without an LLM it still works, using offline fusions.
 

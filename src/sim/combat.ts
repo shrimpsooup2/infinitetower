@@ -67,6 +67,14 @@ export function dealDamage(w: World, e: Enemy, amount: number, type: DamageType,
       return 0;
     }
   }
+  // A hole in it (the toroid): some direct hits fly straight through.
+  if (src.isHit && e.def.abilities.length) {
+    const ev = e.def.abilities.find((x) => x.kind === 'evade');
+    if (ev && w.rng.next() < (ev.amount ?? 0.3)) {
+      if (w.fxOn) w.fx.push({ k: 'text', x: e.x, y: e.y - e.size, text: 'miss', color: '#e6e6ff' });
+      return 0;
+    }
+  }
   if (e.immune === type) {
     if (w.fxOn && w.tick % 20 === 0) w.fx.push({ k: 'text', x: e.x, y: e.y - e.size, text: 'IMMUNE', color: '#dddddd' });
     return 0;

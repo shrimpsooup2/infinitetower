@@ -15,7 +15,6 @@ import { dist2, hashString } from './math.ts';
 import { TOWER_BY_ID, SOCKET_COST, SOCKET_RARITY_WEIGHT, LEVELS, towerCostToTier } from '../content/towers.ts';
 import { specAtLevel, withScaling } from '../effects/level.ts';
 import { POWERS, POWER_BY_ID } from '../content/powers.ts';
-import { BOSS_WAVES } from '../content/enemies.ts';
 import { DIFFICULTY_BY_ID, RULES } from '../content/rules.ts';
 import { generateWave } from '../content/waves.ts';
 import { PAL, DAMAGE_COLORS } from '../content/colors.ts';
@@ -771,7 +770,7 @@ export class World {
         this.msg('Victory!', 'good');
         return;
       }
-      if (BOSS_WAVES[n]) {
+      if (this.getWave(n).boss) {
         this.grantPack('boss');
         this.msg('Boss defeated: Boss Pack earned!', 'good');
       } else if (n % FAMILY_PACK_EVERY === 0) {

@@ -9,6 +9,7 @@ import { resolveVfx } from '../../effects/runtime.ts';
 import { Fx, drawBeam, drawLoop, resolve, type BeamLook, type Cam } from './fx.ts';
 import { drawTower, bodyRadius } from './tower-art.ts';
 import { drawEnemyBody } from './enemy-art.ts';
+import { pathOf } from '../../sim/combat.ts';
 import { drawAmbient, drawScenery } from './scenery.ts';
 import {
   circlePath, fillStroke, lerpHex, outlinedText, polyPath, rgba, roundRectPath, shapePath, softSprite, quant, type Ctx2D,
@@ -633,8 +634,24 @@ export class Renderer {
     const tint = e.statuses.find((s) => s.def.overlay !== 'none' || !s.def.builtin);
     if (tint) fill = lerpHex(fill, tint.def.tint, 0.35);
     if (e.hitFlash > 0) fill = lerpHex(fill, '#ffffff', 0.35);
-    // Swift shapes leave speed streaks.
-    if (e.mods.includes('swift') && !e.hardCC) {
+    // Two places at once: the hemicube's ghost shows where it will jump next.
+    if (e.ghost >= 0 && !e.hardCC) {
+      const g = pathOf(w, e).at(e.ghost, { x: 0, y: 0, ang: 0 });
+      const gx = cam.ox + g.x * cam.s, gy = cam.oy + (g.y - hover) * cam.s;
+      ctx.globalAlpha = 0.22 + 0.12 * Math.sin(this.time * 6 + e.id);
+      drawEnemyBody(ctx, e.def, gx, gy, r, e.rot + Math.PI, this.time + e.id, e.def.color, lw, 0);
+      ctx.globalAlpha = 1;
+      ctx.setLineDash([3, 4]);
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(gx, gy);
+      ctx.strokeStyle = rgba(e.def.color, 0.45);
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    // Swift and dashing shapes leave speed streaks.
+    if ((e.mods.includes('swift') || w.tick < e.dashUntil) && !e.hardCC) {
       ctx.strokeStyle = rgba(e.def.color, 0.5);
       ctx.lineWidth = Math.max(1.5, cam.s * 0.04);
       ctx.lineCap = 'round';

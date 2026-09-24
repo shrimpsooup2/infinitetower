@@ -7,7 +7,7 @@ import { World } from '../src/sim/world.ts';
 import { MAPS, TUTORIAL_MAP } from '../src/content/maps.ts';
 import { TOWERS } from '../src/content/towers.ts';
 import { POWERS, POWER_BY_ID } from '../src/content/powers.ts';
-import { ENEMY_BY_ID, BOSS_WAVES, dimensionOf } from '../src/content/enemies.ts';
+import { ENEMY_BY_ID, bossFor, dimensionOf } from '../src/content/enemies.ts';
 import { generateWave } from '../src/content/waves.ts';
 import { PACKS, SCRAP_VALUE } from '../src/content/packs.ts';
 import { POWER_MIN_RARITY } from '../src/content/rarity.ts';
@@ -101,7 +101,8 @@ test('waves are well formed across the campaign', () => {
       const wv = generateWave(m, n);
       assert.ok(wv.groups.length > 0, `${m.id} wave ${n} is empty`);
       for (const g of wv.groups) assert.ok(ENEMY_BY_ID.has(g.enemy), `${m.id} wave ${n}: unknown enemy ${g.enemy}`);
-      if (BOSS_WAVES[n]) assert.ok(wv.groups.some((g) => g.enemy === BOSS_WAVES[n]), `${m.id} wave ${n} lacks its boss`);
+      const boss = bossFor(m, n);
+      if (boss) assert.ok(wv.groups.some((g) => g.enemy === boss), `${m.id} wave ${n} lacks its boss`);
       // Nothing from a higher dimension shows up early.
       const dim = dimensionOf(n);
       for (const g of wv.groups) assert.ok(ENEMY_BY_ID.get(g.enemy)!.dim <= dim, `${m.id} wave ${n}: ${g.enemy} is from the future`);

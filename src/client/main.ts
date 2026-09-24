@@ -20,6 +20,7 @@ import { towerIcon } from './render/tower-art.ts';
 import { colorsFor } from '../sim/world.ts';
 import { drawScenery, themeOf } from './render/scenery.ts';
 import { CampaignMap, ROMAN, DIFF_COLOR } from './campaign.ts';
+import { dexScreen } from './dex.ts';
 import type { DifficultyDef, MapDef } from '../sim/types.ts';
 
 /**
@@ -155,6 +156,7 @@ class App {
         this.settings.tutorialDone ? null : h('button', { class: 'btn green', on: { click: () => this.tutorial() } }, 'Tutorial'),
         h('button', { class: 'btn blue', on: { click: () => this.maps() } }, 'Play'),
         h('button', { class: 'btn purple', on: { click: () => this.codexScreen() } }, 'Codex'),
+        h('button', { class: 'btn red', on: { click: () => this.dexScreen() } }, 'Shape Dex'),
         this.settings.tutorialDone ? h('button', { class: 'btn grey', on: { click: () => this.tutorial() } }, 'Tutorial') : null,
         h('button', { class: 'btn grey', on: { click: () => this.settingsScreen() } }, 'Settings'),
       ),
@@ -262,6 +264,16 @@ class App {
       restart: () => { clearRun(); this.start(map.id, diff); },
     }, map, diff, saved.save);
     this.game.start();
+  }
+
+  dexScreen(): void {
+    this.screen(
+      h('div', { class: 'topbar' },
+        h('button', { class: 'btn grey', on: { click: () => this.title() } }, 'Back'),
+        h('h1', null, 'Shape Dex'),
+      ),
+      ...dexScreen(loadProgress(), this.settings.unlockAll),
+    );
   }
 
   codexScreen(): void {

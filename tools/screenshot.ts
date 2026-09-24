@@ -90,8 +90,8 @@ for (const dims of [[3], [4], [0]]) {
     app.start('meadow', 'normal');
     const w = app.game.w;
     const { spawnEnemy } = await import('/src/sim/enemies.ts' as string);
-    const { ENEMIES, BOSS_WAVES } = await import('/src/content/enemies.ts' as string);
-    const bosses = new Set(Object.values(BOSS_WAVES));
+    const { ENEMIES } = await import('/src/content/enemies.ts' as string);
+    const bosses = new Set(ENEMIES.filter((e: any) => e.traits.includes('boss')).map((e: any) => e.id));
     const list = ENEMIES.filter((e: any) => (dims[0] === 0 ? bosses.has(e.id) : e.dim === dims[0] && !bosses.has(e.id)));
     const len = w.paths[0].length;
     list.forEach((d: any, i: number) => {

@@ -6,7 +6,7 @@
 
 import type { EnemyDef, MapDef, SpawnGroup, SpawnMod, WaveDef } from '../sim/types.ts';
 import { DAMAGE_TYPES } from '../effects/types.ts';
-import { ENEMY_BY_ID, BOSS_WAVES, INTRO, dimensionOf } from './enemies.ts';
+import { ENEMY_BY_ID, INTRO, bossFor, dimensionOf } from './enemies.ts';
 import { RULES } from './rules.ts';
 import { Rng } from '../sim/rng.ts';
 import { hashString } from '../sim/math.ts';
@@ -24,8 +24,15 @@ function introduced(n: number): EnemyDef[] {
   return INTRO.filter(([, w]) => w <= n).map(([id]) => ENEMY_BY_ID.get(id)!);
 }
 
+/** HP a wave pays for one of these, including the shapes it splits into. */
 function unitHp(def: EnemyDef, mods: SpawnMod[]): number {
-  return def.hp * mods.reduce((a, m) => a * MOD_HP[m], 1) + def.shield * 0.6;
+  const own = def.hp * mods.reduce((a, m) => a * MOD_HP[m], 1) + def.shield * 0.6;
+  let kids = 0;
+  for (const a of def.abilities) {
+    const child = a.kind === 'split' && a.enemy ? ENEMY_BY_ID.get(a.enemy) : undefined;
+    if (child) kids += (a.count ?? 2) * unitHp(child, mods.filter((m) => m !== 'elite'));
+  }
+  return own + kids;
 }
 
 function interval(def: EnemyDef, mods: SpawnMod[]): number {
@@ -75,7 +82,7 @@ export function generateWave(map: MapDef, n: number): WaveDef {
     return m;
   };
 
-  const boss = BOSS_WAVES[n] ?? null;
+  const boss = bossFor(map, n);
   if (boss) {
     const escorts = rng.shuffle([...current]).slice(0, 2);
     for (const e of escorts) add(e, budget * 0.25, randomMods(e));

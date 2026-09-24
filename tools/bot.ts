@@ -116,6 +116,13 @@ export function playMap(map: MapDef, difficulty: DifficultyDef['id'], seed: numb
   const w = new World({ map, difficulty, seed, fx: false, autoStart: true });
   const tiles = rankTiles(w);
   const state = { next: 0 };
+  // Which shapes get through, for BOT_TRACE.
+  const leaks = new Map<string, number>();
+  const leak = w.leak.bind(w);
+  w.leak = (e) => {
+    leaks.set(`${e.def.id}@${e.waveN}`, (leaks.get(`${e.def.id}@${e.waveN}`) ?? 0) + 1);
+    leak(e);
+  };
   act(w, tiles, state);
   w.callWave();
   let tick = 0;
@@ -134,6 +141,7 @@ export function playMap(map: MapDef, difficulty: DifficultyDef['id'], seed: numb
     const invested = w.towers.reduce((a, t) => a + t.invested + t.socketGold, 0);
     console.log(`  lives at each wave start: ${lives.join(' ')}`);
     console.log(`  gold earned ${Math.round(w.stats.goldEarned)}, in towers ${Math.round(invested)}, unspent ${Math.round(w.gold)}`);
+    console.log(`  leaks (shape@wave x count): ${[...leaks].map(([k, n]) => `${k}x${n}`).join(' ') || 'none'}`);
   }
   return {
     map: map.id, seed, won: w.phase === 'victory', wave: w.phase === 'victory' ? w.totalWaves : w.waveN, lives: w.lives,

@@ -39,7 +39,8 @@ src/
   server/         app (HTTP, static + TS stripping, API, rate limit), db (store interface +
                   SQLite), firestore (Firestore store),
                   forge/ (prompt, examples, llm, pipeline, balancer, balance-worker), main
-  client/         main (title, campaign, codex, settings), campaign (the world map), game
+  client/         main (title, campaign, codex, settings), campaign (the world map), dex (the
+                  Shape Dex), game
                   (loop, input, HUD, packs, hand, side panel), tutorial, forge client, storage,
                   audio,
                   render/ (renderer, fx, draw, scenery, tower-art, enemy-art, geometry, pack-art),
@@ -88,12 +89,17 @@ tools/            bot (playtest), pregen (seed the database), screenshot (Playwr
   - they are drawn on an offscreen buffer at roughly half resolution, with alpha snapped to
     hard edges, then scaled up with nearest-neighbour sampling onto a screen-aligned grid,
     for a touch of aliasing.
+- Star solids, compounds and the toroid have explicit faces (stellation pyramids, an exact
+  cover of the dodecahedron's vertices by five tetrahedra, a picture-frame torus) and are
+  depth-sorted rather than just culled. 2D star polygons {n/k} are drawn as their true
+  self-crossing outlines (a hexagram as two triangles).
 - **4D enemies** are rotated in the XW and ZW planes, projected with perspective, and drawn as
-  wireframes.
+  wireframes. The 120-cell has 600 vertices and 1,200 edges. The grand antiprism is the
+  600-cell with two completely orthogonal rings of ten vertices removed.
 
 ## 5. Testing and tuning
 
-- `npm test` runs 44 cases:
+- `npm test` runs 50 cases:
   - every authored spec validates;
   - the validator survives 2,000 random fuzz specs;
   - 300 random offline fusions validate;
@@ -108,7 +114,11 @@ tools/            bot (playtest), pregen (seed the database), screenshot (Playwr
   - tower levels: costs grow with level, tier and cards; levels raise socket and tier prices;
     level marks are lifted, checked, applied, clamped and saved; concept numbers bind to the
     spec and render at the tower's level and potency; the rules text labels growing numbers;
-  - polytope vertex, edge and face counts (and Euler's formula) are right;
+  - polytope vertex, edge and face counts (and Euler's formula) are right, including the
+    snub cube, the 120-cell, the grand antiprism, the star solids, compounds (χ = 4 and 10)
+    and the toroid (χ = 0);
+  - the new abilities work (evade, antipode, dash, spikes, cycling immunity, shedding, a fixed
+    train of links), and the campaign meets every boss;
   - the forge works end to end with the mock model, including numbering, World Firsts,
     lineage, the provisional fallback and the HTTP API;
   - the static build is plain JS with no server code, and the deployment guards (CORS
@@ -151,7 +161,9 @@ See [deploy.md](deploy.md).
 Built:
 
 - simulation, effect and VFX language, 10 towers, 40 powers;
-- enemies across 2D, 3D and 4D, 6 bosses;
+- 41 shapes across 2D, 3D and 4D, including star polygons, star and compound solids, a
+  toroid, a projective hemicube and uniform 4D oddities, and 12 bosses that vary by map;
+- the Shape Dex;
 - a 15-map campaign in 9 visual themes, 4 difficulties, endless mode;
 - card packs, rarities and exclusive powers;
 - tower levels, with fusion numbers the Forge marks as growing, and concepts with live numbers;

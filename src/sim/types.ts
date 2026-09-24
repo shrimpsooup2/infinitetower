@@ -58,7 +58,19 @@ export interface TowerDef {
 export interface EnemyAbility {
   kind:
     | 'heal' | 'blink' | 'burrow' | 'spawn' | 'split' | 'revive' | 'haste_aura' | 'phase' | 'mimic'
-    | 'carapace' | 'stomp' | 'rewind_hp' | 'phases';
+    | 'carapace' | 'stomp' | 'rewind_hp' | 'phases'
+    /** Every `every` s, runs at `amount`x speed for `duration` s. */
+    | 'dash'
+    /** A share (`amount`) of direct hits pass straight through it. */
+    | 'evade'
+    /** Every `every` s, jumps to its "antipode" `amount` tiles ahead, then back part of the way. */
+    | 'antipode'
+    /** Immune to one damage type, which changes every `every` s. */
+    | 'cycle_immunity'
+    /** Every `every` s, jams the `count` nearest towers within `radius` for `duration` s. */
+    | 'spikes'
+    /** Sheds `count` x `enemy` evenly as it loses HP. */
+    | 'shed';
   every?: number;
   radius?: number;
   amount?: number;
@@ -67,7 +79,8 @@ export interface EnemyAbility {
   count?: number;
 }
 
-export type EnemyShape = 'poly' | 'circle';
+/** 2D outline: a polygon (or star polygon), the circle, a digon's lens, or an apeirogon's zigzag. */
+export type EnemyShape = 'poly' | 'circle' | 'lens' | 'zigzag';
 
 /** Per-group spawn modifiers that give any shape a gameplay twist. */
 export type SpawnMod = 'swarm' | 'flying' | 'swift' | 'elite' | 'stealth';
@@ -84,6 +97,8 @@ export interface EnemyDef {
   /** 3D/4D model id for the renderer. */
   poly?: string;
   shape: EnemyShape;
+  /** Star polygon density: {n/star} (2D). */
+  star?: number;
   color: string;
   hp: number;
   speed: number;
@@ -135,6 +150,8 @@ export interface MapDef {
   waves: number;
   /** Look of the map (see client/render/scenery.ts); purely visual. Defaults to 'plain'. */
   theme?: string;
+  /** Which boss each mid-act boss wave brings (10, 30, 50); see BOSS_POOLS. */
+  bosses?: Partial<Record<number, string>>;
 }
 
 export interface SpawnGroup {
@@ -267,6 +284,15 @@ export interface Enemy {
   flying: boolean;
   traitSet: Set<string>;
   mods: SpawnMod[];
+  /** Tick a dash ends. */
+  dashUntil: number;
+  /** Shapes shed so far (shed) and spawned so far (a limited spawn). */
+  shed: number;
+  spawned: number;
+  /** Where an antipode jump will land (path distance), or -1. */
+  ghost: number;
+  /** Next antipode jump goes back rather than ahead. */
+  flipBack: boolean;
 }
 
 export interface TowerStats {
