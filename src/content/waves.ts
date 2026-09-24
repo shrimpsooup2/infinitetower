@@ -2,7 +2,8 @@
 // map's waves are fixed and balanceable, and endless waves can be produced on
 // demand. Waves 1-20 are Flatland (2D), 21-40 Solidspace (3D), 41-60
 // Hyperspace (4D). New shapes get an introduction wave where they star.
-// The HP budget grows ~15% per wave: fusions are how you keep up.
+// The HP budget grows ~15% per wave through Solidspace (13% budget, 2% HP
+// creep) and ~13% in Hyperspace: fusions are how you keep up.
 
 import type { EnemyDef, MapDef, SpawnGroup, SpawnMod, WaveDef } from '../sim/types.ts';
 import { DAMAGE_TYPES } from '../effects/types.ts';
@@ -15,10 +16,13 @@ const ENDLESS_MUTATORS = ['shielded', 'swift', 'regen', 'armored', 'swarm'];
 
 /** Total enemy HP (before the wave HP multiplier and difficulty) a wave is built from. */
 export function waveBudget(n: number): number {
-  return 260 * Math.pow(1.13, n - 1);
+  // 13% a wave through Solidspace, 11% in Hyperspace (the waves there were out of reach).
+  return 260 * Math.pow(1.13, Math.min(n, 40) - 1) * Math.pow(1.11, Math.max(0, n - 40));
 }
 
 export const MOD_HP: Record<SpawnMod, number> = { swarm: 0.3, flying: 0.8, swift: 0.7, elite: 3, stealth: 0.9 };
+/** The share of its budget a swift group gets: their speed makes up the rest. */
+export const SWIFT_SHARE = 0.7;
 
 function introduced(n: number): EnemyDef[] {
   return INTRO.filter(([, w]) => w <= n).map(([id]) => ENEMY_BY_ID.get(id)!);
@@ -60,6 +64,8 @@ export function generateWave(map: MapDef, n: number): WaveDef {
   };
   let t = 0;
   const add = (def: EnemyDef, pts: number, mods: SpawnMod[] = []) => {
+    // Swift shapes move 1.5x as fast, so spend less of the budget on them.
+    if (mods.includes('swift')) pts *= SWIFT_SHARE;
     let count = pts / unitHp(def, mods);
     if (count > 45 && !mods.includes('swarm') && !mods.includes('elite')) {
       mods = [...mods, 'elite'];

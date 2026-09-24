@@ -321,11 +321,13 @@ Endless mode (past wave 60) stacks global mutators (shielded, swift, regen, armo
 
 ### 5.7 Waves
 
-Waves are generated per (map, wave number) from an HP budget that grows about 15% per wave:
-13% from the budget plus 2% from a global HP creep. They are deterministic, so every player
-sees the same waves on the same map. A shape that splits is budgeted with the shapes it
-splits into. Each new shape gets an **introduction wave** where it stars. Every 5th wave is a **rush** (swift, flying or swarming variants). Boss waves bring
-escorts. Older shapes mix back in as filler. The top bar previews the next wave's shapes and
+Waves are generated per (map, wave number) from an HP budget that grows about 15% per wave
+through Solidspace (13% from the budget plus 2% from a global HP creep) and about 13% in
+Hyperspace (11% plus the creep). They are deterministic, so every player sees the same waves
+on the same map. A shape that splits is budgeted with the shapes it splits into. Swift groups
+move 1.5× as fast, so they get only 70% of their share of the budget. Each new shape gets an
+**introduction wave** where it stars. Every 5th wave is a **rush** (swift, flying or swarming
+variants). Boss waves bring escorts. Older shapes mix back in as filler. The top bar previews the next wave's shapes and
 modifiers.
 
 ---
