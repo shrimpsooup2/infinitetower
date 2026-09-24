@@ -373,6 +373,28 @@ and 30 in Act II. Players
 who pick their cards with a plan and design fusions that really synergise should get much
 further.
 
+**How far good play gets:** the Strategist (`tools/strategist.ts`) plans every wave by
+playing copies of the game ahead. It too uses only offline fusions. One run per map and
+difficulty (W = won; else the wave it fell on, and the share of that wave's HP its defence
+could have held):
+
+| Act | Casual | Normal | Hard | Brutal |
+| --- | --- | --- | --- | --- |
+| I (5 maps) | 5 wins | 5 wins | 5 wins | 5 wins, all without losing a life |
+| II (5 maps) | 3 wins; else 40 (38%) | falls at 40 (29–84%) or 30 (95%) | 1 flawless win (Geode); else 30 (32–88%) | falls at 30 (27–75%) |
+| III (5 maps) | falls at 45–56 | falls at 40 (42–82%) | falls at 30 (30–65%) | falls at 10–30 |
+
+- The walls are the bosses. Wave-30 bosses come in at 14–24× the HP of wave 29 (wave-10
+  bosses are 5–8×, the Sphere at wave 40 about 5×). They stop every Hard and Brutal run past
+  Act I except one. The wave-40 Sphere stops Normal.
+- Past wave 40, wave HP grows 13% a wave (`260 × 1.13^n`), while income grows about
+  linearly, so even Casual runs in Act III fall between waves 45 and 56.
+- Per gold, a new tier-1 tower buys about twice the damage of a tier upgrade, and levels buy
+  less still. The planner fills good tiles with tier-1 towers first, and upgrades later,
+  when tiles run out.
+- Single runs are noisy: Geode was a flawless win on Hard but fell at wave 40 on Normal.
+  Small early choices snowball.
+
 ---
 
 ## 7. Economy and lives
