@@ -22,19 +22,25 @@ import { drawScenery, themeOf } from './render/scenery.ts';
 import { CampaignMap, ROMAN, DIFF_COLOR } from './campaign.ts';
 import type { DifficultyDef, MapDef } from '../sim/types.ts';
 
+/**
+ * The drifting shapes behind the menus. They are made once per page load and
+ * keep drifting from where they were as you move between screens (and come
+ * back from a game); only a reload shuffles them.
+ */
 class Attract {
   private raf = 0;
-  private shapes: { def: (typeof ENEMIES)[number]; x: number; y: number; vx: number; vy: number; r: number; rot: number; t: number }[] = [];
+  private readonly shapes: { def: (typeof ENEMIES)[number]; x: number; y: number; vx: number; vy: number; r: number; rot: number; t: number }[];
   private canvas: HTMLCanvasElement;
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
-  }
-  start(): void {
     const pool = ENEMIES.filter((e) => !e.traits.includes('boss'));
     this.shapes = Array.from({ length: 26 }, (_, i) => {
       const def = pool[(i * 7) % pool.length];
       return { def, x: Math.random(), y: Math.random(), vx: (Math.random() - 0.5) * 0.02, vy: (Math.random() - 0.5) * 0.02, r: 14 + def.dim * 7 + Math.random() * 10, rot: Math.random() * 6, t: Math.random() * 10 };
     });
+  }
+  start(): void {
+    if (this.raf) return;
     let last = performance.now();
     const frame = (now: number) => {
       this.raf = requestAnimationFrame(frame);
@@ -46,6 +52,7 @@ class Attract {
   }
   stop(): void {
     cancelAnimationFrame(this.raf);
+    this.raf = 0;
   }
   private draw(dt: number): void {
     const c = this.canvas;
@@ -129,7 +136,6 @@ class App {
 
   private screen(...children: Parameters<typeof h>[2][]): void {
     this.stopGame();
-    this.attract.stop();
     this.attract.start();
     mount(this.ui, h('div', { class: 'screen' }, ...children));
   }

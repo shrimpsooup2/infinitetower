@@ -121,28 +121,44 @@ Rarity odds improve as the waves climb.
 
 ### 4.3 Packs
 
-**You keep one card from each pack.** Opening a pack flips its cards over one at a time, with
-the rarest card getting a fanfare. You pick one and the rest are gone, so cards are precious
-and every pick is a decision about which fusion to build next. An opened pack has to be
-picked from before another can be opened, and the choice is saved with the run, so reloading
-can't re-roll it.
+You keep one card from most packs (two from a Twin Pack); the rest are gone. Each slot of a
+pack has a rarity floor, and most packs have a perk:
 
-| Pack | Choose from | How you get it |
-| --- | --- | --- |
-| Starter | 3, one Rare+ | Start of every run |
-| Shape | 3, better odds later | Every 3 waves, or the Shop (90 + 14 × wave gold) |
-| Prism | 3, all Rare+ | Shop only (240 + 32 × wave gold) |
-| Boss | 4, all Rare+, one Epic+ | Each boss defeated |
+| Pack | Cards | Perk | Where |
+| --- | --- | --- | --- |
+| Starter | keep 1 of 3, one Rare+ | | start of every run |
+| Shape | keep 1 of 3, better odds later | | every 3 waves; Shop (90 + 14 × wave) |
+| Salvage | keep 1 of 4 | the cards you don't keep are scrapped for gold | Shop (120 + 16 × wave) |
+| Family | keep 1 of 4, one Rare+ | every card from one power family (Elements, Forms, Tempo, Fortune, Life & Matter), shown on the pack | every 12 waves; Shop (140 + 18 × wave), family changes each wave |
+| Gambler | keep 1 of 3, one Rare+ | one free reroll of the whole pack | Shop from wave 3 (170 + 22 × wave) |
+| Prism | keep 1 of 3, all Rare+ | | Shop (240 + 32 × wave) |
+| Twin | keep 2 of 5, two Rare+ | | Shop from wave 6 (300 + 36 × wave) |
+| Boss | keep 1 of 4, all Rare+, one Epic+ | | each boss defeated |
+| Crown | keep 1 of 3, all Epic+, one Legendary | | Shop from wave 15 (800 + 50 × wave) |
 
 Unwanted cards can be **scrapped** from the hand (right-click) for 15 / 40 / 100 / 250 gold by
 rarity.
+
+**Looks.** Better cards and packs look it:
+
+- **Cards:**
+  - Rare cards get a light sweep and a blue glow.
+  - Epic cards get a holographic rainbow foil and a purple bloom.
+  - Legendary cards get foil, a spinning gold border, a pulsing gold bloom and sparkles.
+  - Big cards tilt toward the pointer, and their foil and glare follow it.
+- **Packs:**
+  - Salvage, Family and Gambler packs are shiny.
+  - Prism, Twin and Boss packs are holographic.
+  - The Crown Pack is radiant gold with sparkles.
+- **Openings:** a pack with an Epic or Legendary inside opens with light rays behind the
+  cards.
 
 ### 4.4 Sockets and order
 
 A tower has up to three sockets, opened by tier: tier 1 opens the base, tier 2 the secondary
 and tier 3 the tertiary. Order matters: the **base** power leads, the **secondary** bends it,
-and the **tertiary** adds a twist. Only the last card can be removed. It goes back to the
-hand, and the gold paid for its socket is spent.
+and the **tertiary** adds a twist. **A socketed card is there for good:** it can't be taken
+out. Selling the tower scraps its cards, and their scrap value is added to the sell price.
 
 **Socketing costs** climb steeply by slot (80 / 240 / 720 gold for a Common card), and rarer
 cards cost more. The rarity markup is biggest in the base slot, where a card carries about
@@ -162,7 +178,10 @@ Common, +1.5% Rare, +2.2% Epic, +3.2% Legendary). By wave 60 a Legendary card in
 slot costs about 3,700 gold on a level-1 tower, and about 12,500 on a level-10 one.
 
 So a Legendary is worth saving for the right tower and the moment you can afford it. The hand
-shows each card's price for the selected tower.
+shows each card's price for the selected tower. Each socket in the tower panel shows its
+Common price now and what Rare, Epic and Legendary cards cost relative to it (such as ×1.7
+×2.8 ×5.3), with the full breakdown on hover. Hovering a card over the tower shows how its
+price is built: slot price × rarity × level × wave.
 
 - **One power:** the power's own hand-made upgrade for that tower.
 - **Two powers:** a pair fusion. **Three powers:** a triple, which evolves its pair.
@@ -309,7 +328,8 @@ further.
   and an **early-call bonus**. Calling the next wave early pays for the countdown time you
   skip. Waves can overlap.
 - Gold goes to towers, upgrades, levels, sockets and Shop packs, and comes back from selling
-  (70%, levels included) and scrapping cards.
+  (70%, levels included, plus the scrap value of its cards), scrapping cards and Salvage
+  Packs.
 - **Lives:** a leaked shape costs its lives value. Most shapes cost 1, elites 2, and bosses
   10–20.
 - There is no interest mechanic. It rewards hoarding, which works against experimenting.
@@ -375,7 +395,6 @@ title menu for replays. Nothing else in the UI carries instructional text.
 | Space | Send the next wave |
 | U / L / S / T | Upgrade / level up / sell (press twice) / cycle targeting |
 | F | Game speed 1×/2×/3× |
-| Backspace | Remove the last socketed card |
 | Esc / P | Cancel, or pause |
 | Right-click | Cancel; on a card: scrap it |
 

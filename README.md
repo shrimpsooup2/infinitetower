@@ -15,9 +15,11 @@ number. From then on, every player who makes that combination gets the same fusi
 - **Discovery numbers, no names.** Fusions are numbered and dated (Fusion #1,024, first forged
   12 Mar 2027). The first player to make one gets a *World First*. You can't preview a fusion
   until you've made it yourself, and the ones you've made are kept in your browser's Codex.
-- **Card packs with rarities.** Powers come as Common, Rare, Epic and Legendary cards, and you
-  keep one card from each pack. Rarer cards are stronger, and the most exotic powers only come
-  at high rarity.
+- **Card packs with rarities.** Powers come as Common, Rare, Epic and Legendary cards in nine
+  kinds of pack, most with a perk (salvage the rest for gold, one power family, a free reroll,
+  keep two). You keep one card from each (two from a Twin Pack), and a socketed card is there
+  for good. Rarer cards are stronger and look it, from a light sweep to holographic foil and
+  a gold bloom, and the most exotic powers only come at high rarity.
 - **Tower levels.** Level a tower up for more damage, and the numbers its fusion marks as
   growing grow too; each fusion's explanation shows its real numbers at the tower's level.
   Levels make that tower's next cards and tier cost more, so you choose what to grow first.

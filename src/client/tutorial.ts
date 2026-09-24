@@ -91,7 +91,7 @@ const STEPS: Step[] = [
     anchor: () => '.hand', side: 'above', next: 'Next',
   },
   {
-    text: (t) => (t.host.selected() ? 'Click a card to socket it into your Bolt. The tower gains that power.' : 'Select your Bolt, then click a card to socket it.'),
+    text: (t) => (t.host.selected() ? 'Click a card to socket it into your Bolt. The tower gains that power for good: socketed cards never come back out.' : 'Select your Bolt, then click a card to socket it.'),
     anchor: handOrTower, side: 'above',
     enter: topUpSocket,
     done: (t) => t.w.towers.some((x) => x.sockets.length >= 1),
@@ -137,7 +137,7 @@ const STEPS: Step[] = [
     anchor: () => '.shopbtn', side: 'above', next: 'Next',
   },
   {
-    text: () => 'Shortcuts: 1-0 build · Space sends the wave · U upgrades · L levels up · S sells (press twice) · T changes targeting · F changes speed · Backspace removes the last card · Esc cancels or pauses.',
+    text: () => 'Shortcuts: 1-0 build · Space sends the wave · U upgrades · L levels up · S sells (press twice) · T changes targeting · F changes speed · Esc cancels or pauses.',
     next: 'Next',
   },
   {

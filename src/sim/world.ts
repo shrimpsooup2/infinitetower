@@ -3,10 +3,10 @@
 // server's balance solver and the headless playtest bot all run this.
 
 import type {
-  Card, DifficultyDef, Drone, Enemy, FxEvent, MapDef, Palette3, Projectile, SpecRuntime, SpecState, TargetMode, Tower, WaveDef, Zone,
+  Card, DifficultyDef, Drone, Enemy, FxEvent, MapDef, Palette3, PowerDef, Projectile, SpecRuntime, SpecState, TargetMode, Tower, WaveDef, Zone,
 } from './types.ts';
 import { POWER_MIN_RARITY, RARITIES, rarityFactor, rollRarity } from '../content/rarity.ts';
-import { PACK_BY_ID, PACK_EVERY, SCRAP_VALUE, type PackDef } from '../content/packs.ts';
+import { PACK_BY_ID, PACK_EVERY, FAMILY_PACK_EVERY, FAMILY_ORDER, SCRAP_VALUE, type PackDef } from '../content/packs.ts';
 import type { FusionSpec, VfxDef } from '../effects/types.ts';
 import { Path } from './path.ts';
 import { Rng } from './rng.ts';
@@ -73,13 +73,23 @@ export interface PackInst {
   uid: number;
   type: PackDef['id'];
   wave: number;
+  /** For a Family Pack: the family all its cards come from. */
+  family?: PowerDef['family'];
 }
 
-/** An opened pack waiting for the player to keep one of its cards. */
+/** An opened pack waiting for the player to keep its cards. */
 export interface PackOffer {
   uid: number;
   type: PackDef['id'];
+  /** The cards still on offer. */
   cards: Card[];
+  /** Cards still to keep. */
+  keep: number;
+  /** Free rerolls left (Gambler Pack). */
+  rerolls: number;
+  family?: PowerDef['family'];
+  /** The wave its odds were rolled for. */
+  wave: number;
 }
 
 export type Phase = 'build' | 'running' | 'victory' | 'defeat';
@@ -304,16 +314,20 @@ export class World {
     return null;
   }
 
+  /**
+   * Gold for selling a tower. Socketed cards never come back out: selling
+   * scraps them, and their scrap value is part of the price.
+   */
   sellValue(t: Tower): number {
     const fresh = t.placedTick > this.lastWaveStartTick && t.dmgTotal === 0;
-    return Math.floor(t.invested * (fresh ? 1 : RULES.sellRefund));
+    const scrap = t.cards.reduce((a, c) => a + (SCRAP_VALUE[c.rarity] ?? 10), 0);
+    return Math.floor(t.invested * (fresh ? 1 : RULES.sellRefund)) + scrap;
   }
 
   sell(id: number): string | null {
     const t = this.towerById.get(id);
     if (!t) return 'No tower';
     this.gold += this.sellValue(t);
-    this.cards.push(...t.cards);
     this.towers = this.towers.filter((x) => x !== t);
     this.towerById.delete(id);
     this.grid[t.r * this.cols + t.c] = 0;
@@ -336,13 +350,17 @@ export class World {
    * every wave as income grows.
    */
   socketCost(t: Tower, rarity = 0): number | null {
-    const i = t.sockets.length;
-    if (i >= 3) return null;
+    return t.sockets.length >= 3 ? null : this.slotCost(t, t.sockets.length, rarity).cost;
+  }
+
+  /** The price of a card of this rarity in any slot of this tower right now, with its multipliers. */
+  slotCost(t: Tower, slot: number, rarity = 0): { cost: number; rarity: number; level: number; wave: number } {
+    const i = Math.max(0, Math.min(2, slot));
     const r = RARITIES[rarity] ?? RARITIES[0];
     const markup = 1 + (r.socketMult - 1) * SOCKET_RARITY_WEIGHT[i];
     const level = 1 + r.levelGrowth * (t.level - 1);
-    const stage = 1 + r.socketGrowth * Math.max(0, this.waveN - 1);
-    return Math.round((SOCKET_COST[i] * markup * level * stage) / 5) * 5;
+    const wave = 1 + r.socketGrowth * Math.max(0, this.waveN - 1);
+    return { cost: Math.round((SOCKET_COST[i] * markup * level * wave) / 5) * 5, rarity: markup, level, wave };
   }
 
   /** Why a power cannot be socketed right now, or null if it can. */
@@ -369,16 +387,6 @@ export class World {
     const [card] = this.cards.splice(ci, 1);
     t.cards.push(card);
     t.sockets.push(card.power);
-    this.refreshSpec(t);
-    return null;
-  }
-
-  /** Remove the last socketed card (order matters, so only the last one comes out). */
-  unsocket(id: number): string | null {
-    const t = this.towerById.get(id);
-    if (!t || !t.sockets.length) return 'Nothing to remove';
-    t.sockets.pop();
-    this.cards.push(t.cards.pop()!);
     this.refreshSpec(t);
     return null;
   }
@@ -487,9 +495,14 @@ export class World {
   }
 
   /** Roll one card whose rarity is at least `floor`. Some powers only exist at high rarities. */
-  rollCard(wave: number, floor: number, exclude: Set<string> = new Set()): Card {
-    const rarity = Math.max(floor, rollRarity(this.rng, wave, false));
-    const eligible = POWERS.filter((p) => (POWER_MIN_RARITY[p.id] ?? 0) <= rarity && !exclude.has(p.id));
+  rollCard(wave: number, floor: number, exclude: Set<string> = new Set(), family?: PowerDef['family']): Card {
+    let rarity = Math.max(floor, rollRarity(this.rng, wave, false));
+    const allowed = (r: number, fresh: boolean) =>
+      POWERS.filter((p) => (POWER_MIN_RARITY[p.id] ?? 0) <= r && (!fresh || !exclude.has(p.id)) && (!family || p.family === family));
+    let eligible = allowed(rarity, true);
+    // A family can run out of powers at low rarity: lift the card until it has some.
+    while (!eligible.length && rarity < 3) eligible = allowed(++rarity, true);
+    if (!eligible.length) eligible = allowed(rarity, false);
     // Prefer powers that belong to the rolled rarity, so exclusive powers show up in their slots.
     const exact = eligible.filter((p) => (POWER_MIN_RARITY[p.id] ?? 0) === rarity);
     const pool = exact.length && this.rng.chance(0.65) ? exact : eligible.length ? eligible : POWERS;
@@ -497,38 +510,73 @@ export class World {
     return { uid: this.nextId++, power: p.id, rarity };
   }
 
-  grantPack(type: PackDef['id']): PackInst {
+  grantPack(type: PackDef['id'], family?: PowerDef['family']): PackInst {
     const pk: PackInst = { uid: this.nextId++, type, wave: this.waveN };
+    if (PACK_BY_ID.get(type)?.perk === 'family') pk.family = family ?? this.rng.pick(FAMILY_ORDER);
     this.packs.push(pk);
     return pk;
   }
 
-  /** Open a pack: its cards are offered, and the player keeps one (pickCard). */
+  private rollPack(def: PackDef, wave: number, family?: PowerDef['family']): Card[] {
+    const seen = new Set<string>();
+    return def.floors.map((f) => {
+      const c = this.rollCard(wave, f, seen, family);
+      seen.add(c.power);
+      return c;
+    });
+  }
+
+  /** Open a pack: its cards are offered, and the player keeps some of them (pickCard). */
   openPack(uid: number): Card[] | string {
     if (this.offer) return 'Keep a card from the open pack first';
     const i = this.packs.findIndex((p) => p.uid === uid);
     if (i < 0) return 'No such pack';
     const [pk] = this.packs.splice(i, 1);
     const def = PACK_BY_ID.get(pk.type)!;
-    const seen = new Set<string>();
-    const cards = def.floors.map((f) => {
-      const c = this.rollCard(Math.max(pk.wave, this.waveN), f, seen);
-      seen.add(c.power);
-      return c;
-    });
-    this.offer = { uid: pk.uid, type: pk.type, cards };
+    const wave = Math.max(pk.wave, this.waveN);
+    const cards = this.rollPack(def, wave, pk.family);
+    this.offer = { uid: pk.uid, type: pk.type, cards, keep: def.keep ?? 1, rerolls: def.perk === 'reroll' ? 1 : 0, wave, ...(pk.family ? { family: pk.family } : {}) };
     return cards;
   }
 
-  /** Keep one card from the open pack; the others are gone. */
+  /**
+   * Keep a card from the open pack. Once you have kept as many as the pack
+   * allows, the rest are gone (a Salvage Pack scraps them for gold).
+   */
   pickCard(cardUid: number): Card | string {
     const o = this.offer;
     if (!o) return 'No open pack';
     const c = o.cards.find((x) => x.uid === cardUid);
     if (!c) return 'That card is not in the pack';
     this.cards.push(c);
-    this.offer = null;
+    o.cards = o.cards.filter((x) => x !== c);
+    o.keep--;
+    o.rerolls = 0;
+    if (o.keep <= 0 || !o.cards.length) {
+      if (PACK_BY_ID.get(o.type)?.perk === 'salvage') {
+        const g = o.cards.reduce((a, x) => a + (SCRAP_VALUE[x.rarity] ?? 10), 0);
+        if (g) {
+          this.addGold(g);
+          this.msg(`Salvaged the rest for ${g} gold`, 'good');
+        }
+      }
+      this.offer = null;
+    }
     return c;
+  }
+
+  /** Reroll every card of the open pack (a Gambler Pack's perk), before keeping any. */
+  rerollPack(): Card[] | string {
+    const o = this.offer;
+    if (!o || o.rerolls <= 0) return 'No reroll left';
+    o.rerolls--;
+    o.cards = this.rollPack(PACK_BY_ID.get(o.type)!, o.wave, o.family);
+    return o.cards;
+  }
+
+  /** The family a Family Pack bought from the Shop has this wave (it changes every wave). */
+  shopFamily(): PowerDef['family'] {
+    return FAMILY_ORDER[((this.seed >>> 0) + this.waveN * 3) % FAMILY_ORDER.length];
   }
 
   packPrice(type: PackDef['id']): number | null {
@@ -536,12 +584,21 @@ export class World {
     return def?.price ? Math.round(def.price(Math.max(1, this.waveN))) : null;
   }
 
-  buyPack(type: PackDef['id']): PackInst | string {
+  /** Why a pack cannot be bought right now, or null. */
+  packBlocker(type: PackDef['id']): string | null {
+    const def = PACK_BY_ID.get(type);
     const price = this.packPrice(type);
-    if (price === null) return 'That pack cannot be bought';
+    if (!def || price === null) return 'That pack cannot be bought';
+    if ((def.minWave ?? 0) > this.waveN) return `In the Shop from wave ${def.minWave}`;
     if (this.gold < price) return `Needs ${price} gold`;
-    this.gold -= price;
-    return this.grantPack(type);
+    return null;
+  }
+
+  buyPack(type: PackDef['id']): PackInst | string {
+    const block = this.packBlocker(type);
+    if (block) return block;
+    this.gold -= this.packPrice(type)!;
+    return this.grantPack(type, this.shopFamily());
   }
 
   /** Scrap a card from the hand for gold. */
@@ -717,6 +774,9 @@ export class World {
       if (BOSS_WAVES[n]) {
         this.grantPack('boss');
         this.msg('Boss defeated: Boss Pack earned!', 'good');
+      } else if (n % FAMILY_PACK_EVERY === 0) {
+        this.grantPack('family');
+        this.msg('Family Pack earned!', 'good');
       } else if (n % PACK_EVERY === 0) {
         this.grantPack('shape');
         this.msg('Shape Pack earned!', 'good');
@@ -761,7 +821,9 @@ export class World {
     this.endless = s.endless;
     this.cards = s.cards.map((c) => ({ ...c }));
     this.packs = s.packs.map((p) => ({ ...p }));
-    this.offer = s.offer ? { ...s.offer, cards: s.offer.cards.map((c) => ({ ...c })) } : null;
+    this.offer = s.offer
+      ? { ...s.offer, cards: s.offer.cards.map((c) => ({ ...c })), keep: s.offer.keep ?? 1, rerolls: s.offer.rerolls ?? 0, wave: s.offer.wave ?? this.waveN }
+      : null;
     Object.assign(this.stats, s.stats);
     this.nextId = s.nextId;
     this.phase = s.phase === 'running' ? 'running' : s.phase;
@@ -805,7 +867,7 @@ export interface WorldSave {
   endless: boolean;
   cards: Card[];
   packs: PackInst[];
-  offer?: PackOffer | null;
+  offer?: (Omit<PackOffer, 'keep' | 'rerolls' | 'wave'> & Partial<PackOffer>) | null;
   stats: World['stats'];
   phase: Phase;
   countdown: number | null;

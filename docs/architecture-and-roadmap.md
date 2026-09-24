@@ -93,7 +93,7 @@ tools/            bot (playtest), pregen (seed the database), screenshot (Playwr
 
 ## 5. Testing and tuning
 
-- `npm test` runs 42 cases:
+- `npm test` runs 44 cases:
   - every authored spec validates;
   - the validator survives 2,000 random fuzz specs;
   - 300 random offline fusions validate;
@@ -101,7 +101,8 @@ tools/            bot (playtest), pregen (seed the database), screenshot (Playwr
   - the sim is deterministic and save/restore safe;
   - a final-wave leak is a defeat;
   - all 400 tower × power pairs run;
-  - wave and pack rules hold;
+  - wave and pack rules hold: rarity floors, families, keep counts, Salvage gold, one Gambler
+    reroll, Shop wave gates; socketed cards can't be taken out, and selling scraps them;
   - every map is well formed (straight roads inside the grid, obstacles off the road, a known
     theme) and plays its first wave;
   - tower levels: costs grow with level, tier and cards; levels raise socket and tier prices;

@@ -1,15 +1,15 @@
 // A running game: fixed-step loop, input, and the in-game UI.
 
 import { World, DT, type WorldSave } from '../sim/world.ts';
-import type { Card, MapDef, TargetMode, Tower, TowerDef, DifficultyDef } from '../sim/types.ts';
+import type { Card, MapDef, PowerDef, TargetMode, Tower, TowerDef, DifficultyDef } from '../sim/types.ts';
 import { TARGET_MODES } from '../sim/types.ts';
 import { TOWERS, SOCKET_COST, SOCKET_ROLE } from '../content/towers.ts';
 import { POWER_BY_ID, FAMILIES } from '../content/powers.ts';
 import { ENEMY_BY_ID, DIMENSION_NAMES, dimensionOf } from '../content/enemies.ts';
 import { TUTORIAL_MAP } from '../content/maps.ts';
 import { RARITIES, rarityFactor } from '../content/rarity.ts';
-import { PACKS, PACK_BY_ID } from '../content/packs.ts';
-import { drawPackArt } from './render/pack-art.ts';
+import { PACKS, PACK_BY_ID, SCRAP_VALUE } from '../content/packs.ts';
+import { packArt } from './render/pack-art.ts';
 import type { PackInst } from '../sim/world.ts';
 import { waveSummary } from '../content/waves.ts';
 import { describeSpec } from '../effects/describe.ts';
@@ -271,10 +271,6 @@ export class Game {
       case 't':
         if (t) this.w.setTargetMode(t.id, TARGET_MODES[(TARGET_MODES.indexOf(t.targetMode) + 1) % TARGET_MODES.length]);
         break;
-      case 'backspace':
-      case 'delete':
-        if (t && t.sockets.length) this.unsocket(t);
-        break;
       case 'f':
         this.speed = this.speed >= 3 ? 1 : this.speed + 1;
         break;
@@ -346,11 +342,6 @@ export class Game {
     this.selected = t;
     this.d.audio.play('upgrade', 1.3);
     if (t.sockets.length >= 2) this.runKeys.add(this.w.fusionKeyOf(t));
-  }
-
-  private unsocket(t: Tower): void {
-    this.w.unsocket(t.id);
-    this.d.audio.play('ui', 0.8);
   }
 
   private togglePause(force?: boolean): void {
@@ -428,19 +419,24 @@ export class Game {
     const key = `${w.packs.map((p) => p.uid).join(',')}:${w.offer?.uid}:${Math.floor(w.gold / 20)}:${w.waveN}`;
     if (key === this.packKey) return;
     this.packKey = key;
+    // Stack identical packs (a Family Pack of a different family is a different pack).
     const counts = new Map<string, PackInst[]>();
-    for (const p of w.packs) counts.set(p.type, [...(counts.get(p.type) ?? []), p]);
-    const stacks = [...counts.entries()].map(([type, list]) => {
-      const def = PACK_BY_ID.get(type as PackInst['type'])!;
-      return h('div', { class: 'packstack', title: def.name, on: { click: () => { this.d.audio.unlock(); this.openPackModal(list[0]); } } },
-        drawPackArt(def, 44, 60),
+    for (const p of w.packs) {
+      const k = `${p.type}:${p.family ?? ''}`;
+      counts.set(k, [...(counts.get(k) ?? []), p]);
+    }
+    const stacks = [...counts.values()].map((list) => {
+      const def = PACK_BY_ID.get(list[0].type)!;
+      return h('div', { class: 'packstack', title: packTitle(def.name, list[0].family), on: { click: () => { this.d.audio.unlock(); this.openPackModal(list[0]); } } },
+        packArt(def, 44, 60, list[0].family),
         list.length > 1 ? h('span', { class: 'count' }, `x${list.length}`) : null,
       );
     });
-    // A pack that was opened but not picked from (e.g. after reloading) waits here.
-    const open = w.offer
-      ? h('div', { class: 'packstack opened', title: PACK_BY_ID.get(w.offer.type)!.name, on: { click: () => this.openPackModal(null) } },
-        drawPackArt(PACK_BY_ID.get(w.offer.type)!, 44, 60), h('span', { class: 'count' }, '!'))
+    // A pack that was opened but not finished (e.g. after reloading) waits here.
+    const o = w.offer;
+    const open = o
+      ? h('div', { class: 'packstack opened', title: packTitle(PACK_BY_ID.get(o.type)!.name, o.family), on: { click: () => this.openPackModal(null) } },
+        packArt(PACK_BY_ID.get(o.type)!, 44, 60, o.family), h('span', { class: 'count' }, '!'))
       : null;
     mount(this.el.packs,
       open,
@@ -449,53 +445,81 @@ export class Game {
     );
   }
 
-  /** Open a pack (or show the pending one when `pk` is null) and keep one of its cards. */
+  /** Open a pack (or show the pending one when `pk` is null) and keep its cards. */
   private openPackModal(pk: PackInst | null): void {
     const w = this.w;
     const type = pk?.type ?? w.offer?.type;
     if (!type) return;
     const def = PACK_BY_ID.get(type)!;
+    const family = pk ? pk.family : w.offer?.family;
+    const title = packTitle(def.name, family);
     this.modalPause = true;
-    const art = drawPackArt(def, 150, 205);
+    const art = packArt(def, 150, 205, family);
     art.classList.add('packbig');
-    const pick = (cards: Card[], fresh: boolean) => {
-      let kept: Card | null = null;
-      const els = cards.map((c, i) => {
+    const pick = (fresh: boolean) => {
+      const o = w.offer;
+      if (!o) return this.closeModal();
+      const best = Math.max(...o.cards.map((c) => c.rarity));
+      const subtitle = h('div', { class: 'subtitle' });
+      const foot = h('div', { class: 'foot' });
+      const done = () => {
+        foot.replaceChildren(
+          w.packs.length ? h('button', { class: 'btn blue', on: { click: () => this.openPackModal(w.packs[0]) } }, `Open next (${w.packs.length})`) : '',
+          h('button', { class: 'btn green', on: { click: () => this.closeModal() } }, 'Done'),
+        );
+      };
+      const status = () => {
+        const left = w.offer?.keep ?? 0;
+        subtitle.textContent = left > 1 ? `Keep ${left}` : left === 1 ? (o.keep < (def.keep ?? 1) ? 'Keep one more' : 'Keep one') : 'Kept';
+        if (w.offer && w.offer.rerolls > 0) {
+          foot.replaceChildren(h('button', { class: 'btn purple', on: { click: () => {
+            if (typeof w.rerollPack() === 'string') return;
+            this.d.audio.play('whoosh', 1.1);
+            pick(true);
+          } } }, `Reroll all (${w.offer.rerolls} free)`));
+        } else if (w.offer) foot.replaceChildren();
+      };
+      const els = o.cards.map((c, i) => {
         const el = this.bigCard(c, fresh ? i : 0);
         el.classList.add('pickable');
         el.addEventListener('click', () => {
-          if (kept) return;
+          if (!w.offer || !w.offer.cards.includes(c)) return;
+          const gold = w.gold;
           const r = w.pickCard(c.uid);
           if (typeof r === 'string') return;
-          kept = r;
           this.d.audio.play('upgrade', 1.2 + c.rarity * 0.1);
-          els.forEach((x) => x.classList.add(x === el ? 'chosen' : 'gone'));
-          foot.replaceChildren(
-            w.packs.length ? h('button', { class: 'btn blue', on: { click: () => this.openPackModal(w.packs[0]) } }, `Open next (${w.packs.length})`) : '',
-            h('button', { class: 'btn green', on: { click: () => this.closeModal() } }, 'Done'),
-          );
+          el.classList.add('chosen');
+          if (w.offer) return status();
+          for (const x of els) if (!x.classList.contains('chosen')) x.classList.add('gone');
+          if (def.perk === 'salvage' && w.gold > gold) {
+            subtitle.textContent = `Kept · the rest salvaged for ${w.gold - gold} gold`;
+            this.d.audio.play('pluck', 1.4);
+          } else subtitle.textContent = 'Kept';
+          done();
         });
         return el;
       });
-      const foot = h('div', { class: 'foot' });
-      mount(this.el.modal, h('div', { class: 'modal-bg' }, h('div', { class: 'modal' },
-        h('h1', null, def.name),
-        h('div', { class: 'subtitle' }, 'Keep one'),
-        h('div', { class: `draft ${fresh ? 'reveal' : ''}` }, ...els),
+      mount(this.el.modal, h('div', { class: 'modal-bg' }, h('div', { class: `modal pack t${def.tier}` },
+        h('h1', null, title),
+        subtitle,
+        h('div', { class: `draft ${fresh ? 'reveal' : ''} ${best >= 2 ? `burst b${best}` : ''}` }, ...els),
+        def.perk === 'salvage' ? h('div', { class: 'small o', style: { textAlign: 'center', marginTop: '8px' } },
+          `The rest scrap for ${o.cards.map((c) => SCRAP_VALUE[c.rarity]).join(' / ')} gold`) : null,
         foot,
       )));
+      status();
     };
-    if (!pk) return pick(w.offer!.cards, false);
+    if (!pk) return pick(false);
     const open = () => {
       const cards = w.openPack(pk.uid);
       if (typeof cards === 'string') return this.closeModal();
       this.d.audio.play('whoosh', 0.8);
       const best = Math.max(...cards.map((c) => c.rarity));
       setTimeout(() => this.d.audio.play(best >= 3 ? 'fanfare' : 'chime', 1 + best * 0.12), 300);
-      pick(cards, true);
+      pick(true);
     };
-    mount(this.el.modal, h('div', { class: 'modal-bg', on: { click: (e: MouseEvent) => { if (e.target === e.currentTarget) this.closeModal(); } } }, h('div', { class: 'modal', style: { textAlign: 'center' } },
-      h('h1', null, def.name),
+    mount(this.el.modal, h('div', { class: 'modal-bg', on: { click: (e: MouseEvent) => { if (e.target === e.currentTarget) this.closeModal(); } } }, h('div', { class: `modal pack t${def.tier}`, style: { textAlign: 'center' } },
+      h('h1', null, title),
       h('div', { class: 'subtitle' }, def.blurb),
       h('div', { class: 'packwrap', on: { click: open } }, art),
       h('div', { class: 'foot' }, h('button', { class: 'btn gold big', on: { click: open } }, 'Open'), h('button', { class: 'btn grey', on: { click: () => this.closeModal() } }, 'Later')),
@@ -505,34 +529,55 @@ export class Game {
   private bigCard(c: Card, i: number): HTMLElement {
     const p = POWER_BY_ID.get(c.power)!;
     const rar = RARITIES[c.rarity];
-    return h('div', { class: `dcard r${c.rarity} flip`, style: { ...tone(p.color, rar.color), animationDelay: `${0.15 + i * 0.22}s` } },
+    const el = h('div', { class: `dcard r${c.rarity} flip`, style: { ...tone(p.color, rar.color), animationDelay: `${0.15 + i * 0.22}s` } },
+      c.rarity >= 1 ? h('span', { class: 'foil' }) : null,
+      c.rarity >= 1 ? h('span', { class: 'glare' }) : null,
+      c.rarity >= 3 ? h('span', { class: 'sparkles' }) : null,
       h('div', { class: 'glyph' }, p.icon),
       h('div', { class: 'nm' }, p.name),
       h('div', { class: 'fam' }, FAMILIES[p.family]),
       h('div', { class: 'rarity' }, `${rar.name}${rar.mult > 1 ? ` · ×${rar.mult}` : ''}`),
       h('div', { class: 'desc' }, p.blurb),
     );
+    // Rarer cards tilt toward the pointer, and their foil and glare follow it.
+    if (c.rarity >= 1) {
+      el.addEventListener('pointermove', (e) => {
+        const r = el.getBoundingClientRect();
+        const x = (e.clientX - r.left) / r.width, y = (e.clientY - r.top) / r.height;
+        el.style.setProperty('--mx', `${Math.round(x * 100)}%`);
+        el.style.setProperty('--my', `${Math.round(y * 100)}%`);
+        el.style.setProperty('--rx', `${((0.5 - y) * 14).toFixed(1)}deg`);
+        el.style.setProperty('--ry', `${((x - 0.5) * 16).toFixed(1)}deg`);
+      });
+      el.addEventListener('pointerleave', () => {
+        for (const k of ['--mx', '--my', '--rx', '--ry']) el.style.removeProperty(k);
+      });
+    }
+    return el;
   }
 
   private openShop(): void {
     this.modalPause = true;
     const render = () => {
       const w = this.w;
-      mount(this.el.modal, h('div', { class: 'modal-bg', on: { click: (e: MouseEvent) => { if (e.target === e.currentTarget) this.closeModal(); } } }, h('div', { class: 'modal' },
+      mount(this.el.modal, h('div', { class: 'modal-bg', on: { click: (e: MouseEvent) => { if (e.target === e.currentTarget) this.closeModal(); } } }, h('div', { class: 'modal shop' },
         h('h1', null, 'Card Shop'),
         h('div', { class: 'subtitle' }, `${fmtNum(w.gold)} gold`),
         h('div', { class: 'draft' }, ...PACKS.filter((p) => p.price).map((def) => {
           const price = w.packPrice(def.id)!;
-          return h('div', { class: 'col', style: { alignItems: 'center', width: '200px' } },
-            drawPackArt(def, 120, 164),
-            h('div', { class: 'fusion-name' }, def.name),
-            h('div', { class: 'info-card', style: { textAlign: 'center' } }, def.blurb),
-            h('button', { class: 'btn gold', disabled: w.gold < price, on: { click: () => {
+          const block = w.packBlocker(def.id);
+          const locked = (def.minWave ?? 0) > w.waveN;
+          const family = def.perk === 'family' ? w.shopFamily() : undefined;
+          return h('div', { class: `shopitem ${locked ? 'locked' : ''}` },
+            packArt(def, 108, 148, family),
+            h('div', { class: 'fusion-name' }, packTitle(def.name, family)),
+            h('div', { class: 'info-card', style: { textAlign: 'center' } }, def.blurb, family ? ` This wave: ${FAMILIES[family]}.` : ''),
+            h('button', { class: 'btn gold', disabled: !!block, title: block ?? '', on: { click: () => {
               const r = w.buyPack(def.id);
               if (typeof r === 'string') { this.toast(r, 'bad'); this.d.audio.play('error'); return; }
               this.d.audio.play('pluck', 1.5);
               render();
-            } } }, `Buy ${price}g`),
+            } } }, locked ? `From wave ${def.minWave}` : `Buy ${price}g`),
           );
         })),
         h('div', { class: 'foot' }, h('button', { class: 'btn green', on: { click: () => this.closeModal() } }, 'Close')),
@@ -605,6 +650,8 @@ export class Game {
         },
       },
     },
+      c.rarity >= 1 ? h('span', { class: 'foil' }) : null,
+      c.rarity >= 3 ? h('span', { class: 'sparkles' }) : null,
       c.rarity > 0 ? h('span', { class: 'rar' }, rar.name) : null,
       h('span', { class: 'glyph' }, p.icon),
       h('span', { class: 'nm' }, p.name),
@@ -720,7 +767,7 @@ export class Game {
     if (!t && this.selected) this.selected = null;
     const w = this.w;
     const key = t
-      ? `t${t.id}:${t.tier}:${t.level}:${t.specKey}:${t.specState}:${t.targetMode}:${Math.floor(w.gold / 5)}:${this.hoverCard?.uid}:${Math.floor(t.dmgTotal / 50)}:${t.kills}:${Math.round(t.stats.range * 10)}:${Math.round(t.stats.rate * 100)}:${this.d.forge.stages.get(t.specKey)}`
+      ? `t${t.id}:${t.tier}:${t.level}:${w.waveN}:${t.specKey}:${t.specState}:${t.targetMode}:${Math.floor(w.gold / 5)}:${this.hoverCard?.uid}:${Math.floor(t.dmgTotal / 50)}:${t.kills}:${Math.round(t.stats.range * 10)}:${Math.round(t.stats.rate * 100)}:${this.d.forge.stages.get(t.specKey)}`
       : `p${this.placing?.id}:${this.d.codex.size}`;
     if (key === this.sideKey) return;
     this.sideKey = key;
@@ -756,18 +803,22 @@ export class Game {
     // Sockets.
     const sockets = h('div', { class: 'sockets' }, ...[0, 1, 2].map((i) => {
       const c = t.cards[i];
+      const prices = RARITIES.map((_, r) => w.slotCost(t, i, r));
+      const mults = prices.map((x) => x.cost / prices[0].cost);
+      const fmtMult = (m: number) => `×${Math.round(m * 10) / 10}`;
+      const tip = `${SOCKET_ROLE[i]} slot, now: ${RARITIES.map((r, k) => `${r.name} ${prices[k].cost}g (${fmtMult(mults[k])})`).join(' · ')}\n` +
+        `Rarity ×${RARITIES.map((_, k) => Math.round(prices[k].rarity * 10) / 10).join(' / ')} · level ${t.level} ×${prices[0].level.toFixed(2)}–${prices[3].level.toFixed(2)} · wave ${w.waveN} ×${prices[0].wave.toFixed(2)}–${prices[3].wave.toFixed(2)}`;
       if (c) {
         const p = POWER_BY_ID.get(c.power)!;
-        const last = i === t.cards.length - 1;
-        return h('div', { class: `socket filled ${last ? 'removable' : ''}`, style: tone(p.color, RARITIES[c.rarity].color), on: { click: () => { if (last) this.unsocket(t); } } },
+        return h('div', { class: 'socket filled', title: tip, style: tone(p.color, RARITIES[c.rarity].color) },
           h('span', { class: 'role' }, SOCKET_ROLE[i]), h('span', { style: { fontSize: '16px' } }, p.icon), h('span', null, p.name),
-          last ? h('span', { class: 'x' }, '×') : null);
+          c.rarity > 0 ? h('span', { class: 'paid' }, `×${Math.round(prices[c.rarity].rarity * 10) / 10}`) : null);
       }
       const locked = t.tier < i + 1;
-      const next = i === t.cards.length;
-      return h('div', { class: `socket ${locked ? 'locked' : ''}` },
+      return h('div', { class: `socket ${locked ? 'locked' : ''}`, title: tip },
         h('span', { class: 'role' }, SOCKET_ROLE[i]),
-        locked ? h('span', null, `Tier ${i + 1}`) : next ? h('span', null, `${w.socketCost(t, 0) ?? SOCKET_COST[i]}g+`) : h('span', null, '—'),
+        h('span', null, locked ? `Tier ${i + 1}` : `${prices[0].cost}g`),
+        h('span', { class: 'mults' }, ...[1, 2, 3].map((r) => h('span', { style: { color: RARITIES[r].color } }, fmtMult(mults[r])))),
       );
     }));
     // Preview of what a hovered card would make (only if YOU have made it before).
@@ -778,8 +829,12 @@ export class Game {
       const known = t.sockets.length + 1 >= 2 ? this.d.codex.get(k) : null;
       const block = w.socketBlocker(t, hc.rarity);
       const price = w.socketCost(t, hc.rarity);
+      const b = w.slotCost(t, t.sockets.length, hc.rarity);
+      const x2 = (m: number) => `×${Math.round(m * 100) / 100}`;
       preview = h('div', { class: 'panel', style: { background: 'rgba(0,0,0,0.45)' } },
         h('h3', null, `+ ${POWER_BY_ID.get(hc.power)!.name} as ${SOCKET_ROLE[t.sockets.length]}${price !== null ? ` · ${price}g` : ''}`),
+        price !== null ? h('div', { class: 'small o costline' },
+          `${SOCKET_COST[t.sockets.length]}g ${x2(b.rarity)} ${RARITIES[hc.rarity].name.toLowerCase()} ${x2(b.level)} level ${x2(b.wave)} wave`) : null,
         block ? h('div', { class: 'small o', style: { color: '#ff8e8e' } }, block) : null,
         t.sockets.length === 0 ? h('div', { class: 'info-card' }, POWER_BY_ID.get(hc.power)!.blurb)
           : known ? h('div', { class: 'col' }, h('div', { class: 'fusion-name' }, known.name), conceptEl(known.spec, { level: t.level, potency: known.potency, dmgBase: t.stats.damage }, known.concept))
@@ -926,4 +981,9 @@ export class Game {
       ),
     )));
   }
+}
+
+/** "Family Pack: Tempo" for family packs, the plain name otherwise. */
+function packTitle(name: string, family?: PowerDef['family']): string {
+  return family ? `${name}: ${FAMILIES[family]}` : name;
 }
