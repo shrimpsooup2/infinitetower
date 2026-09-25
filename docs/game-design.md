@@ -397,8 +397,13 @@ What the Strategist found, and what changed:
   about a third to two thirds of their HP, the Sphere about 70%, the wave-50 bosses 15-95%
   (the 600-Cell most), and shapes get a toughness step down after waves 30 (×0.72), 40
   (×0.47 more) and 50 (×0.47 more). Swift groups get less of the budget.
-- On these values the Strategist wins Fork and Skyway on Hard, and Act III runs reach the
-  high 50s. Waves 59-60 and the Glome have not been tuned yet.
+- Act III was then tuned "radically, then back": waves 41-60 and their bosses were eased
+  hard until each map won, then everything beaten with room to spare was raised back to
+  just beatable and played again. All five Act III maps were won on Hard. Twin Rivers is
+  the tightest: the others could take much harder late waves, but the values are the
+  easiest any map needed. The Glome went from 600000 HP to 100000, the 120-Cell to 27600;
+  the Grand Antiprism came back up to 39700.
+- On these values the Strategist wins Fork, Skyway and every Act III map on Hard.
 - Single runs are noisy: small early choices snowball, and the same map can go from a
   flawless win to a loss.
 

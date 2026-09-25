@@ -146,7 +146,10 @@ test('hp budget keeps climbing', () => {
   const m = MAPS[8];
   const hp = (n: number) => generateWave(m, n).groups.reduce((a, g) => a + ENEMY_BY_ID.get(g.enemy)!.hp * g.count, 0) * generateWave(m, n).hpMult;
   assert.ok(hp(40) > hp(20) * 3, 'act 2 should be much harder than act 1');
-  assert.ok(hp(60) > hp(40) * 2, 'act 3 should be harder again');
+  // Hyperspace was tuned down by the auto-balancer (a breather after each boss),
+  // but it still climbs through each band and ends above Solidspace.
+  assert.ok(hp(60) > hp(40), 'act 3 should end harder than act 2');
+  assert.ok(hp(50) > hp(41) && hp(59) > hp(51), 'each band climbs from its breather');
 });
 
 test('packs respect rarity floors, exclusive powers and families, and you keep what the pack allows', () => {
