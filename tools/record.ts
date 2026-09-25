@@ -162,7 +162,7 @@ await page.evaluate(([steps, title, speed, panel, show, pace]) => {
 
   const describe = ([name, ...a]: [string, ...unknown[]]): string | null => {
     switch (name) {
-      case 'place': return `Build ${nice(String(a[0]))} at ${a[1]},${a[2]}`;
+      case 'place': return `Build a ${nice(String(a[0]))}`;
       case 'upgrade': { const t = tower(a[0]); return t ? `Upgrade ${t.def.name} to tier ${t.tier + 1}` : null; }
       case 'levelUp': { const t = tower(a[0]); return t ? `Level ${t.def.name} to ${t.level + 1}` : null; }
       case 'socket': { const t = tower(a[0]); return `Socket ${cardName(w.cards.find((c) => c.uid === a[1]))} into ${t?.def.name ?? 'a tower'}`; }
