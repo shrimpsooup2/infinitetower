@@ -401,7 +401,9 @@ await page.evaluate(([steps, title, speed, panel, show, pace]) => {
   (window as unknown as { __rec: unknown }).__rec = { left: () => steps.length - i + (busy ? 1 : 0), phase: () => w.phase, quiet: () => (w as unknown as { quiescent(): boolean }).quiescent(), wave: () => w.waveN, tick: () => w.tick, bad };
 }, [script.steps, title, speed, panel, show, pace] as const);
 
-console.log(`recording ${title} at ${speed}x (about ${Math.round(last / 60 / speed)}s)...`);
+// Acted-out moves hold the game still for about 1.6 paces each.
+const acting = show ? (script.steps.reduce((n, st) => n + st.calls.length, 0) * pace * 1.6) / 1000 : 0;
+console.log(`recording ${title} at ${speed}x (about ${Math.round(last / 60 / speed + acting)}s)...`);
 await page.evaluate(() => {
   const r = (window as unknown as { __rec: { frames: number } }).__rec;
   r.frames = 0;
