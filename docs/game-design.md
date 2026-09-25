@@ -40,8 +40,10 @@ compare fusions fairly.
 
 Ten towers, each with its own attack "chassis", so the same powers feel different on
 different towers. Every tower has 3 tiers. Upgrading raises its stats and opens the next card
-socket. Upgrades are a real investment: tier 2 costs twice the tower's price and tier 3 four
-times (a Bolt is 100, then +200, then +400).
+socket. Tier 2 costs one and a half times the tower's price and tier 3 three times (a Bolt is
+100, then +150, then +300). Per gold, an upgrade buys about two thirds to three quarters of the
+damage of a new tower, plus range, and it needs no new tile, so building tall on a good tile
+competes with building wide.
 
 | Tower | Chassis | Role | Cost | Air |
 | --- | --- | --- | --- | --- |
@@ -63,7 +65,7 @@ Targeting modes: first, last, strong, weak, close. Selling refunds 70%.
 Separately from its tier, a tower can be **levelled up** with gold, from level 1 to 10 (L, or
 the Level button). Levels make a tower stronger without opening sockets:
 
-- every level adds **10% base damage**, so every damage number in its fusion grows with it;
+- every level adds **15% base damage**, so every damage number in its fusion grows with it;
 - the numbers its fusion **marks as growing** (a stun's length, a proc chance, a blast radius,
   a chain count) grow by their own step per level. The Forge chooses which numbers grow and
   by how much when it designs a fusion; everything else stays fixed. Hand-made powers and
@@ -71,11 +73,12 @@ the Level button). Levels make a tower stronger without opening sockets:
 
 A level costs more the higher the tower's tier and the more (and rarer) cards it holds:
 
-> level cost = tower price × 0.5 × tier factor (1 / 1.5 / 2.1) × 1.3^(level − 1) ×
+> level cost = tower price × 0.35 × tier factor (1 / 1.5 / 2.1) × 1.22^(level − 1) ×
 > (1 + 0.3 per Common, 0.5 per Rare, 0.75 per Epic, 1.1 per Legendary card socketed)
 
-So a bare Bolt's first level is 50 gold, and the same Bolt at tier 2 with an Epic and a Rare
-card pays 170. Levels also **raise the price of that tower's next socket** (by 10% per level
+So a bare Bolt's first level is 35 gold, and the same Bolt at tier 2 with an Epic and a Rare
+card pays 120. The first levels of a tier-3 tower buy about as much damage per gold as a new
+tower: upgrade a tower on a good tile, then level it. Levels also **raise the price of that tower's next socket** (by 10% per level
 for a Common card up to 26% for a Legendary) **and of its next tier** (10% per level). Level
 first and your cards cost more to add; socket first and every level costs more. That choice
 is the point.

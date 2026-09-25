@@ -8,7 +8,7 @@ export const TOWERS: TowerDef[] = [
   {
     id: 'bolt', name: 'Bolt', role: 'Single-target DPS', hotkey: '1', chassis: 'projectile',
     blurb: 'Fast, reliable homing bullets. Hits ground and air.',
-    cost: 100, upgradeCost: [200, 400],
+    cost: 100, upgradeCost: [150, 300],
     damage: [11, 18, 30], rate: [2.0, 2.4, 3.0], range: [3.4, 3.8, 4.2],
     dtype: 'kinetic', hitsAir: true, hitsGround: true, projectileSpeed: 11, projRadius: 0.1,
     procCoef: 1, nthScale: 1,
@@ -17,7 +17,7 @@ export const TOWERS: TowerDef[] = [
   {
     id: 'cannon', name: 'Cannon', role: 'Splash damage', hotkey: '2', chassis: 'projectile',
     blurb: 'Heavy shells that explode on impact. Ground only.',
-    cost: 150, upgradeCost: [300, 600],
+    cost: 150, upgradeCost: [225, 450],
     damage: [26, 44, 75], rate: [0.65, 0.75, 0.85], range: [3.2, 3.5, 3.8], splash: [0.95, 1.1, 1.3],
     dtype: 'kinetic', hitsAir: false, hitsGround: true, projectileSpeed: 7, projRadius: 0.17,
     procCoef: 0.7, nthScale: 1,
@@ -26,7 +26,7 @@ export const TOWERS: TowerDef[] = [
   {
     id: 'frost', name: 'Frost', role: 'Crowd control', hotkey: '3', chassis: 'projectile',
     blurb: 'Twin barrels spit ice shards that Chill (slow) enemies.',
-    cost: 120, upgradeCost: [240, 480],
+    cost: 120, upgradeCost: [180, 360],
     damage: [5, 9, 15], rate: [1.8, 2.1, 2.5], range: [3.0, 3.3, 3.6],
     dtype: 'frost', hitsAir: true, hitsGround: true, projectileSpeed: 10, projRadius: 0.11, onHitStatus: 'chill',
     procCoef: 1, nthScale: 1,
@@ -35,7 +35,7 @@ export const TOWERS: TowerDef[] = [
   {
     id: 'arc', name: 'Arc', role: 'Chain lightning', hotkey: '4', chassis: 'chain',
     blurb: 'Instant lightning that jumps between enemies.',
-    cost: 175, upgradeCost: [350, 700],
+    cost: 175, upgradeCost: [260, 525],
     damage: [15, 26, 44], rate: [0.9, 1.0, 1.15], range: [3.0, 3.3, 3.6], chains: [3, 4, 5], chainRange: 1.9,
     dtype: 'shock', hitsAir: true, hitsGround: true,
     procCoef: 0.6, nthScale: 1,
@@ -44,7 +44,7 @@ export const TOWERS: TowerDef[] = [
   {
     id: 'rail', name: 'Rail', role: 'Long-range pierce', hotkey: '5', chassis: 'hitscan',
     blurb: 'A long-range line shot that pierces everything.',
-    cost: 200, upgradeCost: [400, 800],
+    cost: 200, upgradeCost: [300, 600],
     damage: [55, 95, 170], rate: [0.42, 0.48, 0.55], range: [6.0, 6.8, 7.6],
     dtype: 'kinetic', hitsAir: true, hitsGround: true,
     procCoef: 0.8, nthScale: 1,
@@ -53,7 +53,7 @@ export const TOWERS: TowerDef[] = [
   {
     id: 'mortar', name: 'Mortar', role: 'Artillery', hotkey: '6', chassis: 'lob',
     blurb: 'Lobs incendiary shells at the path from very far away.',
-    cost: 180, upgradeCost: [360, 720],
+    cost: 180, upgradeCost: [270, 540],
     damage: [34, 58, 100], rate: [0.45, 0.5, 0.58], range: [7.0, 7.8, 8.6], splash: [1.15, 1.3, 1.5],
     minRange: 1.6, flightTime: 1.1, projRadius: 0.18,
     dtype: 'fire', hitsAir: false, hitsGround: true,
@@ -63,7 +63,7 @@ export const TOWERS: TowerDef[] = [
   {
     id: 'flame', name: 'Flame', role: 'Short-range sweep', hotkey: '7', chassis: 'cone',
     blurb: 'Sprays a cone of fire that burns everything close.',
-    cost: 140, upgradeCost: [280, 560],
+    cost: 140, upgradeCost: [210, 420],
     damage: [4, 7, 12], rate: [5, 5, 5], range: [2.2, 2.4, 2.6], coneAngle: 55,
     dtype: 'fire', hitsAir: false, hitsGround: true, onHitStatus: 'burn',
     procCoef: 0.25, nthScale: 1,
@@ -72,7 +72,7 @@ export const TOWERS: TowerDef[] = [
   {
     id: 'prism', name: 'Prism', role: 'Ramping beam', hotkey: '8', chassis: 'beam',
     blurb: 'A beam whose damage keeps ramping on the same target.',
-    cost: 190, upgradeCost: [380, 760],
+    cost: 190, upgradeCost: [285, 570],
     damage: [3.2, 5.6, 9.6], rate: [5, 5, 5], range: [3.3, 3.6, 4.0],
     dtype: 'arcane', hitsAir: true, hitsGround: true,
     procCoef: 0.35, nthScale: 1,
@@ -81,7 +81,7 @@ export const TOWERS: TowerDef[] = [
   {
     id: 'beacon', name: 'Beacon', role: 'Support aura', hotkey: '9', chassis: 'aura',
     blurb: 'Buffs nearby towers and reveals stealth. Powers socketed here are lent to allies.',
-    cost: 160, upgradeCost: [320, 640],
+    cost: 160, upgradeCost: [240, 480],
     damage: [12, 20, 34], rate: [0, 0, 0], range: [2.5, 2.8, 3.1], auraRate: [0.15, 0.22, 0.3], auraRange: [0.1, 0.15, 0.2],
     dtype: 'arcane', hitsAir: true, hitsGround: true,
     procCoef: 0.5, nthScale: 1,
@@ -90,7 +90,7 @@ export const TOWERS: TowerDef[] = [
   {
     id: 'hive', name: 'Hive', role: 'Drone swarm', hotkey: '0', chassis: 'drones',
     blurb: 'Launches seeking drones that sting enemies, including flyers.',
-    cost: 210, upgradeCost: [420, 840],
+    cost: 210, upgradeCost: [315, 630],
     damage: [6, 9, 14], rate: [2, 2, 2], range: [3.6, 4.0, 4.4], drones: [3, 4, 6],
     dtype: 'toxic', hitsAir: true, hitsGround: true,
     procCoef: 0.5, nthScale: 1,
@@ -126,13 +126,13 @@ export const SOCKET_ROLE = ['Base', 'Secondary', 'Tertiary'] as const;
 export const LEVELS = {
   max: 10,
   /** Base damage per level above 1. */
-  damage: 0.1,
+  damage: 0.15,
   /** The first level-up costs this share of the tower's build price... */
-  base: 0.5,
+  base: 0.35,
   /** ...times this per tier... */
   tierMult: [1, 1.5, 2.1],
   /** ...times this for each level already gained... */
-  growth: 1.3,
+  growth: 1.22,
   /** ...times (1 + these per socketed card, by rarity: Common, Rare, Epic, Legendary). */
   cardWeight: [0.3, 0.5, 0.75, 1.1],
   /** Tier upgrades cost this much more per level. */
