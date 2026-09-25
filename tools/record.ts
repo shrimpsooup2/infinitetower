@@ -373,7 +373,8 @@ await page.evaluate(([steps, title, speed, panel, show, pace]) => {
       const st = steps[i++];
       if (show) {
         busy = true;
-        void showStep(st).then(() => { busy = false; });
+        // An action that fails must not hold the game still for good.
+        void showStep(st).catch((e) => bad.push(`wave ${st.after.waveN}: ${e}`)).finally(() => { busy = false; });
         return;
       }
       let changed: unknown = null;
@@ -397,7 +398,7 @@ await page.evaluate(([steps, title, speed, panel, show, pace]) => {
   w.step = () => { if (busy) return; step(); due(); };
   due();
   g.speed = speed;
-  (window as unknown as { __rec: unknown }).__rec = { left: () => steps.length - i + (busy ? 1 : 0), phase: () => w.phase, wave: () => w.waveN, tick: () => w.tick, bad };
+  (window as unknown as { __rec: unknown }).__rec = { left: () => steps.length - i + (busy ? 1 : 0), phase: () => w.phase, quiet: () => (w as unknown as { quiescent(): boolean }).quiescent(), wave: () => w.waveN, tick: () => w.tick, bad };
 }, [script.steps, title, speed, panel, show, pace] as const);
 
 console.log(`recording ${title} at ${speed}x (about ${Math.round(last / 60 / speed)}s)...`);
@@ -411,8 +412,8 @@ let posted = false;
 for (let prev = { frames: 0, t: Date.now() }; ;) {
   await page.waitForTimeout(15_000);
   const r = await page.evaluate(() => {
-    const r = (window as unknown as { __rec: { left(): number; phase(): string; frames: number; wave(): number; tick(): number; bad: string[] } }).__rec;
-    return { left: r.left(), phase: r.phase(), frames: r.frames, wave: r.wave(), tick: r.tick(), drift: r.bad.length };
+    const r = (window as unknown as { __rec: { left(): number; phase(): string; quiet(): boolean; frames: number; wave(): number; tick(): number; bad: string[] } }).__rec;
+    return { left: r.left(), phase: r.phase(), quiet: r.quiet(), frames: r.frames, wave: r.wave(), tick: r.tick(), drift: r.bad.length };
   });
   const fps = ((r.frames - prev.frames) * 1000) / (Date.now() - prev.t);
   prev = { frames: r.frames, t: Date.now() };
@@ -422,7 +423,7 @@ for (let prev = { frames: 0, t: Date.now() }; ;) {
     posted = true;
     await page.screenshot({ path: out.replace(/\.webm$/, '') + '.png' });
   }
-  if (r.left === 0 && (r.phase === 'victory' || r.phase === 'defeat')) break;
+  if (r.left === 0 && (r.phase === 'victory' || r.phase === 'defeat' || (r.quiet && r.tick > script.steps.at(-1)!.tick))) break;
 }
 await page.waitForTimeout(5000);
 const bad = await page.evaluate(() => (window as unknown as { __rec: { bad: string[] } }).__rec.bad);
