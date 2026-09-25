@@ -179,13 +179,15 @@ tools/            bot (playtest), strategist (planning bot), autobalance (tunes 
 - `npm run autobalance -- fork,twinrivers,nebula,horizon hard` eases the game until the
   Strategist can beat it. Each map is played on the difficulty. After a loss, the tuner eases
   what was lost by how close it was. On a boss wave that is the boss's HP and shield. On
-  any other wave it is the budget growth of that band of ten waves (`GROWTH` in
-  `src/content/waves.ts`), spread over the band so the curve stays smooth. The bot then goes
-  back to an exact save just before the first wave the change affects and plays on. Maps
-  run in parallel, and the easiest value any map needed is printed, ready to write into the
-  content. It prints a line per wave and per change as it goes, stops each map after
-  `--minutes` (40) and reports what it has. The Strategist plays light for this (fewer
-  candidates per step, about twice as fast) unless `--full`.
+  any other wave it is the toughness of that band of ten waves (`TOUGHNESS` in
+  `src/content/waves.ts`), spread over the band so the curve stays smooth. Toughness makes
+  each shape weaker without making them fewer: fewer shapes would also pay less bounty, and
+  the bot would come out weaker. The bot then goes back to an exact save just before the
+  first wave the change affects and plays on. Maps run in parallel, and the easiest value
+  any map needed is printed, ready to write into the content. It prints a line per wave and
+  per change as it goes, stops each map after `--minutes` (40) and reports what it has. The
+  Strategist plays light for this (fewer candidates per step, about twice as fast) unless
+  `--full`.
 - `tools/screenshot.ts` drives every screen in headless Chromium, including a gallery of every
   3D, 4D and boss shape, and reports page errors.
 

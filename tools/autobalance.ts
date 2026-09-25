@@ -5,14 +5,17 @@
 // would have held. The balancer eases exactly that:
 //
 //   - a boss wave: the boss's HP and shield, by that share (with a little margin);
-//   - any other wave: the budget growth of its band of ten waves, so the budget
-//     at that wave shrinks by that share (and every later wave with it).
+//   - any other wave: the toughness of its band of ten waves (TOUGHNESS in
+//     src/content/waves.ts), so every shape at that wave has that much less HP
+//     (and every later wave with it). The number of shapes, and the bounty they
+//     pay, stays the same.
 //
 // Then the game goes back to an exact save just before the first wave the
 // change affects and plays on, until the map is won. Maps run in parallel, one
 // per core; each ends with its own values, and the easiest of them all is what
 // every map can be won with. It prints those, to be written into
-// src/content/enemies.ts (boss hp and shield) and src/content/waves.ts (GROWTH).
+// src/content/enemies.ts (boss hp and shield) and src/content/waves.ts
+// (TOUGHNESS; GROWTH is printed too, for reference).
 //
 //   node tools/autobalance.ts [maps] [difficulty] [--jobs 4] [--minutes 40] [--full]
 //     maps: a comma list or act1 | act2 | act3 | all (default: act2,act3 samples)
@@ -25,13 +28,13 @@ import { availableParallelism } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { ENEMIES, ENEMY_BY_ID, bossFor } from '../src/content/enemies.ts';
 import { MAPS, MAP_BY_ID } from '../src/content/maps.ts';
-import { GROWTH, growthBand } from '../src/content/waves.ts';
+import { GROWTH, TOUGHNESS, growthBand } from '../src/content/waves.ts';
 import type { DifficultyDef } from '../src/sim/types.ts';
 import { play, type Tuner } from './strategist.ts';
 
 type Diff = DifficultyDef['id'];
 
-interface Values { growth: number[]; bosses: Record<string, { hp: number; shield: number }> }
+interface Values { growth: number[]; toughness: number[]; bosses: Record<string, { hp: number; shield: number }> }
 
 /** Lose at `hold`: ease by a little more than that, and always by at least 5%. */
 const ease = (hold: number) => Math.max(0.5, Math.min(0.95, hold * 0.97));
@@ -46,17 +49,20 @@ const tuner = (log: string[]): Tuner => ({ map, wave, hold }) => {
     log.push(`wave ${wave}: ${boss} x${f.toFixed(2)} -> ${d.hp} hp, ${d.shield} shield`);
     return { from: wave, note: `${boss} x${f.toFixed(2)}` };
   }
-  // Spread the cut over the band's waves up to this one, so the curve stays smooth.
+  // Make the band's shapes less tough (not fewer: fewer would also pay less
+  // bounty, and the bot would come out weaker). Spread the cut over the band's
+  // waves up to this one, so the curve stays smooth.
   const band = growthBand(wave);
   const first = Math.max(2, band * 10 + 1);
-  const was = GROWTH[band];
-  GROWTH[band] *= Math.pow(f, 1 / (wave - first + 1));
-  log.push(`wave ${wave}: growth of waves ${band * 10 + 1}-${band * 10 + 10} ${was.toFixed(4)} -> ${GROWTH[band].toFixed(4)}`);
-  return { from: first, note: `growth ${band * 10 + 1}-${band * 10 + 10} x${f.toFixed(2)} at wave ${wave}` };
+  const was = TOUGHNESS[band];
+  TOUGHNESS[band] *= Math.pow(f, 1 / (wave - first + 1));
+  log.push(`wave ${wave}: toughness of waves ${band * 10 + 1}-${band * 10 + 10} ${was.toFixed(4)} -> ${TOUGHNESS[band].toFixed(4)}`);
+  return { from: first, note: `toughness ${band * 10 + 1}-${band * 10 + 10} x${f.toFixed(2)} at wave ${wave}` };
 };
 
 const snapshot = (): Values => ({
   growth: [...GROWTH],
+  toughness: [...TOUGHNESS],
   bosses: Object.fromEntries(ENEMIES.filter((e) => e.traits.includes('boss')).map((e) => [e.id, { hp: e.hp, shield: e.shield }])),
 });
 
@@ -92,7 +98,11 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     console.log(`balancing ${maps.join(', ')} on ${diff}, ${jobs} at a time`);
     const done = () => {
       // The easiest value any map needed is what every map can be won with.
-      const out: Values = { growth: before.growth.map((g, i) => Math.min(...results.map((r) => r.values.growth[i] ?? g))), bosses: {} };
+      const out: Values = {
+        growth: before.growth.map((g, i) => Math.min(...results.map((r) => r.values.growth[i] ?? g))),
+        toughness: before.toughness.map((g, i) => Math.min(...results.map((r) => r.values.toughness?.[i] ?? g))),
+        bosses: {},
+      };
       for (const [id, v] of Object.entries(before.bosses)) {
         const hp = Math.min(...results.map((r) => r.values.bosses[id]?.hp ?? v.hp));
         const shield = Math.min(...results.map((r) => r.values.bosses[id]?.shield ?? v.shield));
@@ -101,6 +111,9 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       console.log('\nGROWTH (waves 1-10, 11-20, ...):');
       console.log(`  was  [${before.growth.map((g) => g.toFixed(4)).join(', ')}]`);
       console.log(`  now  [${out.growth.map((g) => g.toFixed(4)).join(', ')}]`);
+      console.log('TOUGHNESS (waves 1-10, 11-20, ...):');
+      console.log(`  was  [${before.toughness.map((g) => g.toFixed(4)).join(', ')}]`);
+      console.log(`  now  [${out.toughness.map((g) => g.toFixed(4)).join(', ')}]`);
       console.log('bosses changed:');
       for (const [id, v] of Object.entries(out.bosses)) {
         const b = before.bosses[id];

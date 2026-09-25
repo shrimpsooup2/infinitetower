@@ -22,8 +22,22 @@ const ENDLESS_MUTATORS = ['shielded', 'swift', 'regen', 'armored', 'swarm'];
  */
 export const GROWTH = [1.13, 1.13, 1.13, 1.13, 1.11, 1.11];
 
-/** Which entry of GROWTH wave `n` grows by. */
+/** Which entry of GROWTH (and TOUGHNESS) wave `n` grows by. */
 export const growthBand = (n: number) => Math.min(GROWTH.length - 1, Math.floor((n - 1) / 10));
+
+/**
+ * How much tougher each shape gets per wave, on top of the HP creep, for the
+ * same bands. Unlike GROWTH it leaves the number of shapes (and so the bounty
+ * they pay) alone. Also tuned by tools/autobalance.ts.
+ */
+export const TOUGHNESS = [1, 1, 1, 1, 1, 1];
+
+/** The product of TOUGHNESS up to wave `n`. */
+export function toughness(n: number): number {
+  let t = 1;
+  for (let k = 2; k <= n; k++) t *= TOUGHNESS[growthBand(k)];
+  return t;
+}
 
 export function waveBudget(n: number): number {
   let b = 260;
@@ -151,7 +165,7 @@ export function generateWave(map: MapDef, n: number): WaveDef {
   return {
     n,
     groups,
-    hpMult: RULES.hpMult(n) * map.hpScale,
+    hpMult: RULES.hpMult(n) * map.hpScale * toughness(n),
     boss,
     reward: RULES.clearBonus(n),
     carapace: DAMAGE_TYPES[rng.int(0, DAMAGE_TYPES.length - 1)],
