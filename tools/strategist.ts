@@ -771,6 +771,8 @@ export async function play(
   }
 
   const hold = !best.won && !best.timeout && best.last ? await holdOf(best.last) : 1;
+  // For debugging a loss: STRAT_DUMP=file.json saves the state just before the killing wave.
+  if (process.env.STRAT_DUMP && !best.won && best.last) writeFileSync(process.env.STRAT_DUMP, JSON.stringify(best.last));
   // After a win: how much more HP each boss wave could have had and still been survived.
   const spare: Record<number, number> = {};
   if (o.margins && best.won && best === line) {
