@@ -32,7 +32,7 @@ export const growthBand = (n: number) => Math.min(GROWTH.length - 1, Math.floor(
  * alone. The bands start right after a boss wave, so an easing reads as a
  * breather. Tuned by tools/autobalance.ts.
  */
-export const TOUGHNESS = [1, 1, 1, 1, 1, 1];
+export const TOUGHNESS = [1, 1, 1, 0.72, 0.92, 0.47];
 
 /** The product of TOUGHNESS for wave `n`'s band and every band before it. */
 export function toughness(n: number): number {
