@@ -378,27 +378,29 @@ and 30 in Act II. Players
 who pick their cards with a plan and design fusions that really synergise should get much
 further.
 
-**How far good play gets:** the Strategist (`tools/strategist.ts`) plans every wave by
-playing copies of the game ahead. It too uses only offline fusions. One run per map and
-difficulty (W = won; else the wave it fell on, and the share of that wave's HP its defence
-could have held):
+**How the difficulty is tuned:** the Strategist (`tools/strategist.ts`) plans every wave
+by playing copies of the game ahead, with offline fusions only, and the auto-balancer
+(`tools/autobalance.ts`) eases the game wherever it loses, by how close it came, until it
+wins. Hard is the target: good play should just beat every map there, so Casual and Normal
+are comfortable and Brutal is the real challenge.
 
-| Act | Casual | Normal | Hard | Brutal |
-| --- | --- | --- | --- | --- |
-| I (5 maps) | 5 wins | 5 wins | 5 wins | 5 wins, all without losing a life |
-| II (5 maps) | 3 wins; else 40 (38%) | falls at 40 (29–84%) or 30 (95%) | 1 flawless win (Geode); else 30 (32–88%) | falls at 30 (27–75%) |
-| III (5 maps) | falls at 45–56 | falls at 40 (42–82%) | falls at 30 (30–65%) | falls at 10–30 |
+What the Strategist found, and what changed:
 
-- The walls are the bosses. Wave-30 bosses come in at 14–24× the HP of wave 29 (wave-10
-  bosses are 5–8×, the Sphere at wave 40 about 5×). They stop every Hard and Brutal run past
-  Act I except one. The wave-40 Sphere stops Normal.
-- Past wave 40, wave HP grows 13% a wave (`260 × 1.13^n`), while income grows about
-  linearly, so even Casual runs in Act III fall between waves 45 and 56.
-- Per gold, a new tier-1 tower buys about twice the damage of a tier upgrade, and levels buy
-  less still. The planner fills good tiles with tier-1 towers first, and upgrades later,
-  when tiles run out.
-- Single runs are noisy: Geode was a flawless win on Hard but fell at wave 40 on Normal.
-  Small early choices snowball.
+- Before the tuning, bosses were the walls. The wave-30 bosses came in at 14-24× the HP of
+  wave 29 and stopped almost every Hard and Brutal run past Act I; the wave-40 Sphere
+  stopped Normal; nothing won Act III.
+- Per gold, a new tier-1 tower bought twice the damage of a tier upgrade and four to five
+  times that of a level, so the best play was tower spam (about 60 tier-1 towers a game).
+  Upgrades now cost 25% less and levels are stronger and cheaper (section 3.1), and the bot
+  builds about 30% fewer towers and levels its best ones instead.
+- Tuned on Fork, Twin Rivers, Nebula, Horizon and Skyway on Hard: the wave-30 bosses lost
+  about a third to two thirds of their HP, the Sphere about 70%, the wave-50 bosses 15-95%
+  (the 600-Cell most), and shapes get a toughness step down after waves 30 (×0.72), 40
+  (×0.47 more) and 50 (×0.47 more). Swift groups get less of the budget.
+- On these values the Strategist wins Fork and Skyway on Hard, and Act III runs reach the
+  high 50s. Waves 59-60 and the Glome have not been tuned yet.
+- Single runs are noisy: small early choices snowball, and the same map can go from a
+  flawless win to a loss.
 
 ---
 
