@@ -488,8 +488,15 @@ async function plan(w: World, ctx: Ctx): Promise<string[]> {
   let lastKind = '';
   let sinceFull = 0;
   let prev: Objective | null = null;
+  // Checks the coming wave passed are not re-run after each purchase, but the
+  // game is not strictly monotonic: a buy that helps against 4x HP can make the
+  // real wave slightly worse. So the real wave is checked once more at the end,
+  // and a leak sends the plan back to fixing it.
+  let boughtSinceTruth = false;
+  for (let round = 0; round < 3; round++) {
   for (let step = 0; step < 24; step++) {
     const snap = w.snapshot();
+    if (!prev || prev.kind === 'leak') boughtSinceTruth = false;
     const o = await objective(w, ctx, snap, from, prev);
     prev = o;
     if (o.stress > pol.stress) from = o.stress;
@@ -526,6 +533,14 @@ async function plan(w: World, ctx: Ctx): Promise<string[]> {
     }
     done.push(`${describe(r.buy.m, w)} (-${r.buy.gain.toFixed(1)} ${o.why})`);
     apply(w, r.buy.m);
+    boughtSinceTruth = true;
+  }
+  if (!boughtSinceTruth) break;
+  const truth = await probe1(ctx, { snap: w.snapshot(), move: null, stress: 1 });
+  if (!truth || truth.lives === 0) break;
+  done.push('(the last buys let the wave leak: back to fixing it)');
+  prev = null;
+  short = null;
   }
   return done;
 }
