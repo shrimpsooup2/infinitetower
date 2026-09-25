@@ -176,6 +176,10 @@ tools/            bot (playtest), strategist (planning bot), autobalance (tunes 
     top damage dealers in turn (`--no-panel` to hide it; `--size 1600x900` for more room).
     It checks the replay in Node first, and runs 2 to 8 times faster than real time
     (`--speed` to choose).
+  - `--show` plays each move by hand at a watchable pace: a cursor glides to the button,
+    tile or card and clicks it, the game pauses while it does (`--pace` ms per move, 900 by
+    default), and a banner says what the bot did and why (stops a leak, readies for a boss,
+    holds a stronger wave). The moves still land on the tick they were planned for.
 - `npm run autobalance -- fork,twinrivers,nebula,horizon hard` eases the game until the
   Strategist can beat it. Each map is played on the difficulty. After a loss, the tuner eases
   what was lost by how close it was. On a boss wave that is the boss's HP and shield. On

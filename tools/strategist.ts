@@ -591,7 +591,13 @@ export interface Script {
   steps: Step[];
   result?: Result;
 }
-type Step = { tick: number; calls: [string, ...unknown[]][]; after: { gold: number; lives: number; waveN: number } };
+type Step = {
+  tick: number;
+  calls: [string, ...unknown[]][];
+  after: { gold: number; lives: number; waveN: number };
+  /** The plan behind this wave's purchases, one line per purchase (and what it saved for), for the recorder. */
+  notes?: string[];
+};
 
 /** The world methods a player uses; recording wraps them. */
 export const PLAYER_CALLS = ['place', 'upgrade', 'levelUp', 'socket', 'openPack', 'pickCard', 'scrapCard', 'buyPack', 'callWave'] as const;
@@ -678,7 +684,7 @@ export async function play(
       last = w.snapshot();
       waveSnaps.set(w.waveN + 1, last);
       const called = w.callWave();
-      steps.push({ tick, calls: [...log], after: { gold: w.gold, lives: w.lives, waveN: w.waveN } });
+      steps.push({ tick, calls: [...log], after: { gold: w.gold, lives: w.lives, waveN: w.waveN }, notes: moves });
       if (called !== null && w.quiescent()) break;
       // Play the wave out, however long a slowed boss takes (an hour of game time at most).
       for (let t = 0; !w.quiescent() && w.phase === 'running' && t < 60 * 3600; t++) w.step();
