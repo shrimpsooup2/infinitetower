@@ -14,8 +14,11 @@
 // every map can be won with. It prints those, to be written into
 // src/content/enemies.ts (boss hp and shield) and src/content/waves.ts (GROWTH).
 //
-//   node tools/autobalance.ts [maps] [difficulty] [--jobs 4]
+//   node tools/autobalance.ts [maps] [difficulty] [--jobs 4] [--minutes 40] [--full]
 //     maps: a comma list or act1 | act2 | act3 | all (default: act2,act3 samples)
+//   It prints a line per wave and per change as it goes. Each map stops after
+//   --minutes and reports what it has. The Strategist plays light (fewer
+//   candidates per step) unless --full.
 
 import { fork } from 'node:child_process';
 import { availableParallelism } from 'node:os';
@@ -64,12 +67,19 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     return i >= 0 ? args.splice(i, 2)[1] : dflt;
   };
   const jobs = Number(flag('jobs', String(availableParallelism())));
+  const minutes = Number(flag('minutes', '40'));
   const pos = args.filter((a) => !a.startsWith('--'));
   if (args.includes('--job')) {
     // A child: balance one map, then report its values.
     const [mapId, diff] = pos;
     const log: string[] = [];
-    const r = await play(mapId, diff as Diff, 7919, { threads: 1, tries: 0, tune: tuner(log), trace: args.includes('--trace') });
+    const t0 = Date.now();
+    const say = (l: string) => process.stderr.write(`[${((Date.now() - t0) / 60000).toFixed(0).padStart(3)} min] ${mapId.padEnd(11)} ${l}\n`);
+    const r = await play(mapId, diff as Diff, 7919, {
+      threads: 1, tries: 0, tune: tuner(log), light: !args.includes('--full'), say, deadline: t0 + minutes * 60000,
+      trace: args.includes('--trace'),
+    });
+    say(r.won ? `won with ${r.lives} lives` : `stopped at wave ${r.wave} (time limit)`);
     process.stdout.write(JSON.stringify({ map: mapId, won: r.won, wave: r.wave, lives: r.lives, log, values: snapshot() }) + '\n');
   } else {
     const pick = (a: string) => a === 'all' ? MAPS.map((m) => m.id) : /^act[123]$/.test(a) ? MAPS.filter((m) => m.act === Number(a[3])).map((m) => m.id) : a.split(',').filter((id) => MAP_BY_ID.has(id));
@@ -102,7 +112,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       while (running < jobs && queue.length) {
         const m = queue.shift()!;
         running++;
-        const child = fork(fileURLToPath(import.meta.url), [m, diff, '--job'], { stdio: ['ignore', 'pipe', 'inherit', 'ipc'] });
+        const child = fork(fileURLToPath(import.meta.url), [m, diff, '--job', '--minutes', String(minutes), ...(args.includes('--full') ? ['--full'] : [])], { stdio: ['ignore', 'pipe', 'inherit', 'ipc'] });
         let text = '';
         child.stdout!.on('data', (b) => { text += b; });
         child.on('exit', () => {
@@ -110,7 +120,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
           try {
             const r = JSON.parse(text.trim().split('\n').pop()!);
             results.push(r);
-            console.log(`${r.map.padEnd(12)} ${r.won ? `won with ${r.lives} lives` : `lost at ${r.wave}`}`);
+            console.log(`${r.map.padEnd(12)} ${r.won ? `won with ${r.lives} lives` : `stopped at wave ${r.wave} (time limit)`}`);
             for (const l of r.log) console.log(`    ${l}`);
           } catch {
             console.log(`${m}: failed`);

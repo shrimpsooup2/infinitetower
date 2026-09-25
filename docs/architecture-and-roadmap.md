@@ -183,7 +183,9 @@ tools/            bot (playtest), strategist (planning bot), autobalance (tunes 
   `src/content/waves.ts`), spread over the band so the curve stays smooth. The bot then goes
   back to an exact save just before the first wave the change affects and plays on. Maps
   run in parallel, and the easiest value any map needed is printed, ready to write into the
-  content.
+  content. It prints a line per wave and per change as it goes, stops each map after
+  `--minutes` (40) and reports what it has. The Strategist plays light for this (fewer
+  candidates per step, about twice as fast) unless `--full`.
 - `tools/screenshot.ts` drives every screen in headless Chromium, including a gallery of every
   3D, 4D and boss shape, and reports page errors.
 

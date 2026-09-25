@@ -87,6 +87,8 @@ interface Ctx {
   tiles: Map<string, { c: number; r: number; score: number }[]>;
   rollouts: number;
   pool: Pool | null;
+  /** Fewer candidates per step (for balancing, where "can a good player win" is enough). */
+  light: boolean;
 }
 
 type Move =
@@ -338,9 +340,12 @@ function candidates(w: World, ctx: Ctx, budget: number): Move[] {
     const spot = free(id, 1)[0];
     return spot ? (spot.score * def.damage[0] * def.rate[0]) / def.cost : 0;
   };
-  const top = new Set([...TOWERS].filter((d) => d.chassis !== 'aura').sort((a, b) => promise(b.id) - promise(a.id)).slice(0, 3).map((d) => d.id));
+  const ranked = [...TOWERS].filter((d) => d.chassis !== 'aura').sort((a, b) => promise(b.id) - promise(a.id));
+  const top = new Set(ranked.slice(0, 3).map((d) => d.id));
+  // Light: the four most promising types and Frost (slows count against bosses), one tile each.
+  const light = new Set([...ranked.slice(0, 4).map((d) => d.id), 'frost']);
   for (const def of TOWERS) {
-    if (def.cost > budget) continue;
+    if (def.cost > budget || (ctx.light && def.chassis !== 'aura' && !light.has(def.id))) continue;
     if (def.chassis === 'aura') {
       // A Beacon goes where it covers the most towers.
       let best: { c: number; r: number; n: number } | null = null;
@@ -352,14 +357,14 @@ function candidates(w: World, ctx: Ctx, budget: number): Move[] {
       if (best) moves.push({ k: 'build', def: def.id, c: best.c, r: best.r, cost: def.cost });
       continue;
     }
-    for (const spot of free(def.id, top.has(def.id) ? 2 : 1)) moves.push({ k: 'build', def: def.id, c: spot.c, r: spot.r, cost: def.cost });
+    for (const spot of free(def.id, top.has(def.id) && !ctx.light ? 2 : 1)) moves.push({ k: 'build', def: def.id, c: spot.c, r: spot.r, cost: def.cost });
   }
   const busy = [...w.towers].sort((a, b) => b.dmgTotal - a.dmgTotal);
-  for (const t of busy.slice(0, 8)) {
+  for (const t of busy.slice(0, ctx.light ? 5 : 8)) {
     const up = w.upgradeCost(t);
     if (up !== null && up <= budget) moves.push({ k: 'upgrade', c: t.c, r: t.r, cost: up });
   }
-  for (const t of busy.slice(0, 4)) {
+  for (const t of busy.slice(0, ctx.light ? 2 : 4)) {
     const lv = w.levelCost(t);
     if (lv !== null && lv <= budget) moves.push({ k: 'level', c: t.c, r: t.r, cost: lv });
   }
@@ -369,9 +374,9 @@ function candidates(w: World, ctx: Ctx, budget: number): Move[] {
   let sockets = 0;
   busy.filter((t) => t.tier > t.sockets.length).forEach((t, i) => {
     const ranked = [...w.cards].sort((a, b) => RARITY_WEIGHT[b.rarity] * rating(t.def.id, b.power) - RARITY_WEIGHT[a.rarity] * rating(t.def.id, a.power));
-    for (const c of i < 4 ? ranked : ranked.slice(0, 2)) {
+    for (const c of i < (ctx.light ? 2 : 4) ? ranked : ranked.slice(0, ctx.light ? 1 : 2)) {
       const cost = w.socketCost(t, c.rarity);
-      if (cost !== null && cost <= budget && sockets < 20) {
+      if (cost !== null && cost <= budget && sockets < (ctx.light ? 8 : 20)) {
         moves.push({ k: 'socket', c: t.c, r: t.r, card: c.uid, cost });
         sockets++;
       }
@@ -586,11 +591,17 @@ function recordCalls(w: World, log: [string, ...unknown[]][]): void {
 export type Tuner = (loss: { map: MapDef; wave: number; hold: number }) => { from: number; note: string } | null;
 
 /** One line of play, from a start to victory or defeat. */
-interface Line { won: boolean; wave: number; lives: number; w: World; steps: Step[]; last: WorldSave | null }
+interface Line { won: boolean; wave: number; lives: number; w: World; steps: Step[]; last: WorldSave | null; timeout?: boolean }
 
 export async function play(
   mapId: string, diff: Diff, seed: number,
-  o: { trace?: boolean; record?: boolean; tries?: number; threads?: number; tune?: Tuner } = {},
+  o: {
+    trace?: boolean; record?: boolean; tries?: number; threads?: number; tune?: Tuner; light?: boolean;
+    /** A short line per wave and per tuning step, as it plays. */
+    say?: (line: string) => void;
+    /** Stop at this time (ms since the epoch) and report the game so far. */
+    deadline?: number;
+  } = {},
 ): Promise<Result & { script?: Script }> {
   const t0 = Date.now();
   const map = MAP_BY_ID.get(mapId)!;
@@ -598,7 +609,7 @@ export async function play(
   const fresh = new World({ map, difficulty: diff, seed, fx: false, autoStart: false });
   const start = fresh.snapshot();
   const threads = o.threads ?? availableParallelism();
-  const ctx: Ctx = { map, diff, policy: POLICIES[0], trace, tiles: rankTiles(fresh), rollouts: 0, pool: threads > 1 ? new Pool(threads) : null };
+  const ctx: Ctx = { map, diff, policy: POLICIES[0], trace, tiles: rankTiles(fresh), rollouts: 0, pool: threads > 1 ? new Pool(threads) : null, light: !!o.light };
   const log: [string, ...unknown[]][] = [];
 
   // Checkpoints: the exact state at the start of each wave of the current line,
@@ -610,6 +621,7 @@ export async function play(
     recordCalls(w, log);
     let last: WorldSave | null = null;
     while (w.phase !== 'victory' && w.phase !== 'defeat') {
+      if (o.deadline && Date.now() > o.deadline) break;
       const tick = w.tick;
       const here = w.snapshot();
       const cp = checkpoints.get(w.waveN);
@@ -620,6 +632,7 @@ export async function play(
       const moves = await plan(w, ctx);
       const expect = trace ? await probe1(ctx, { snap: w.snapshot(), move: null, stress: 1 }) : null;
       if (trace) console.log(`wave ${w.waveN + 1} · lives ${w.lives} · gold ${Math.round(w.gold)} · ${moves.join('; ') || 'saves'} [${ctx.rollouts - r0} copies, ${((Date.now() - tw) / 1000).toFixed(0)}s]`);
+      o.say?.(`wave ${w.waveN + 1}, ${w.lives} lives, ${moves.filter((m) => !m.startsWith('saves')).length} buys (${((Date.now() - tw) / 1000).toFixed(0)}s)`);
       const l0 = w.lives;
       last = w.snapshot();
       const called = w.callWave();
@@ -631,7 +644,8 @@ export async function play(
       if (expect && expect.lives !== l0 - w.lives && (w.phase as string) !== 'defeat') console.log(`  !! expected to lose ${expect.lives}, lost ${l0 - w.lives}`);
     }
     const won = w.phase === 'victory';
-    return { won, wave: won ? w.totalWaves : w.waveN, lives: w.lives, w, steps, last };
+    // Out of time mid-game: report it as a loss at the wave reached.
+    return { won, wave: won ? w.totalWaves : w.waveN, lives: w.lives, w, steps, last, timeout: w.phase !== 'victory' && w.phase !== 'defeat' };
   };
 
   /** How close a loss was: the share of the killing wave's HP at which the defence would have held. */
@@ -660,11 +674,12 @@ export async function play(
   let tries = 0;
   // Balancing: after a loss the tuner eases the game where it was lost, and the
   // bot goes back to just before the first wave that changed and plays on.
-  for (let tunes = 0; o.tune && !line.won && tunes < 60; tunes++) {
+  for (let tunes = 0; o.tune && !line.won && !line.timeout && tunes < 60; tunes++) {
     const hold = await holdOf(line.last!);
     const t = o.tune({ map, wave: line.wave, hold });
     if (!t) break;
     if (trace) console.log(`  <- lost at wave ${line.wave} (held ${Math.round(hold * 100)}%): ${t.note}; back to wave ${t.from}`);
+    o.say?.(`lost at wave ${line.wave} (held ${Math.round(hold * 100)}%): ${t.note}; back to wave ${t.from}`);
     const next = await resume(t.from - 1);
     if (!next) break;
     line = best = next;
@@ -672,7 +687,7 @@ export async function play(
   // The search: after a loss, go back a few waves and play on with a policy not
   // yet tried from there (after a boss, preparing for it earlier comes first);
   // when every policy has been tried, go back further.
-  while (!line.won && tries < (o.tries ?? 8)) {
+  while (!line.won && !line.timeout && tries < (o.tries ?? 8)) {
     const order = bossFor(map, line.wave)
       ? ['boss-first', 'safe', 'thrifty', 'spender', 'balanced']
       : ['safe', 'thrifty', 'spender', 'boss-first', 'balanced'];
@@ -701,7 +716,7 @@ export async function play(
     if (better(line, best)) best = line;
   }
 
-  const hold = !best.won && best.last ? await holdOf(best.last) : 1;
+  const hold = !best.won && !best.timeout && best.last ? await holdOf(best.last) : 1;
   ctx.pool?.close();
   const w = best.w;
   const tiers = [1, 2, 3].map((k) => w.towers.filter((t) => t.tier === k).length).join('/');
