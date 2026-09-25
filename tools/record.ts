@@ -51,7 +51,7 @@ const call = (w: World, [name, ...a]: Call) => (w as unknown as Record<string, (
   const w = new World({ map, difficulty: script.diff, seed: script.seed, autoStart: false });
   w.restore(script.start);
   for (const [i, st] of script.steps.entries()) {
-    for (let t = 0; w.tick < st.tick && t < 60 * 600; t++) { w.step(); w.fx.length = 0; }
+    for (let t = 0; w.tick < st.tick && t < 60 * 3600; t++) { w.step(); w.fx.length = 0; }
     for (const c of st.calls) call(w, c);
     const a = st.after;
     if (w.tick !== st.tick || Math.abs(w.gold - a.gold) > 1e-6 || w.lives !== a.lives || w.waveN !== a.waveN) {

@@ -162,6 +162,9 @@ interface Probe { lives: number; hurt: number; pen: number; gold: number }
 
 const score = (p: Probe) => p.lives * 60 + p.hurt * 30 + p.pen;
 
+/** How much game time a copy plays before counting what is left as getting through. */
+const COPY_SECONDS = 900;
+
 /**
  * One copy to play: the next wave after `move`, with enemy HP x`stress`.
  * `wave` plays that wave instead of the next one (to see a boss coming);
@@ -193,7 +196,7 @@ function runTask(task: Task): Probe | null {
   if (w.callWave() !== null) return p;
   const bound = task.bound ?? Infinity;
   const deep = new Map<number, [number, number]>();
-  for (let t = 1; !w.quiescent() && w.phase === 'running' && t < 60 * 300; t++) {
+  for (let t = 1; !w.quiescent() && w.phase === 'running' && t < 60 * COPY_SECONDS; t++) {
     w.step();
     if (t % 6) continue;
     // Already worse than the baseline on lives alone: no need to play it out.
@@ -204,6 +207,13 @@ function runTask(task: Task): Probe | null {
       const cur = deep.get(e.id);
       if (!cur || f > cur[0]) deep.set(e.id, [f, e.lives]);
     }
+  }
+  // Shapes still going when time is up (a boss slowed to a crawl down a long
+  // road) are not held: they would get through in the end.
+  for (const e of w.enemies) {
+    if (!e.alive) continue;
+    p.lives += e.lives;
+    p.hurt += (e.lives * Math.max(0, e.hp)) / e.maxHp;
   }
   for (const [f, l] of deep.values()) p.pen += f * f * l;
   p.gold = w.gold - gold0;
@@ -670,7 +680,8 @@ export async function play(
       const called = w.callWave();
       steps.push({ tick, calls: [...log], after: { gold: w.gold, lives: w.lives, waveN: w.waveN } });
       if (called !== null && w.quiescent()) break;
-      for (let t = 0; !w.quiescent() && w.phase === 'running' && t < 60 * 600; t++) w.step();
+      // Play the wave out, however long a slowed boss takes (an hour of game time at most).
+      for (let t = 0; !w.quiescent() && w.phase === 'running' && t < 60 * 3600; t++) w.step();
       // Let the last shots land, so the snapshot the next plan starts from is exact.
       for (let t = 0; !w.settled() && w.phase === 'running' && t < 600; t++) w.step();
       if (expect && expect.lives !== l0 - w.lives && (w.phase as string) !== 'defeat') console.log(`  !! expected to lose ${expect.lives}, lost ${l0 - w.lives}`);
