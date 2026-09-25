@@ -5,6 +5,8 @@
 // would have held. The balancer eases exactly that:
 //
 //   - a boss wave: the boss's HP and shield, by that share (with a little margin);
+//     if cutting the boss did not help, the leak is its escorts or the shapes it
+//     sheds, and the wave's band is eased instead;
 //   - any other wave: the toughness of its band of ten waves (TOUGHNESS in
 //     src/content/waves.ts), so every shape at that wave has that much less HP
 //     (and every later wave with it). The number of shapes, and the bounty they
@@ -42,10 +44,16 @@ interface Values { growth: number[]; toughness: number[]; bosses: Record<string,
 /** Lose at `hold`: ease by a little more than that, and always by at least 5%. */
 const ease = (hold: number) => Math.max(0.5, Math.min(0.95, hold * 0.97));
 
-const tuner = (log: string[]): Tuner => ({ map, wave, hold }) => {
+const tuner = (log: string[]): Tuner => {
+  // What each boss wave held the last time its boss was cut: if a cut did not
+  // help, the leak is its escorts or the shapes it sheds, not the boss itself.
+  const lastBossHold = new Map<number, number>();
+  return ({ map, wave, hold }) => {
   const f = ease(hold);
-  const boss = bossFor(map, wave);
+  const before = lastBossHold.get(wave);
+  const boss = before !== undefined && hold - before < 0.05 ? null : bossFor(map, wave);
   if (boss) {
+    lastBossHold.set(wave, hold);
     const d = ENEMY_BY_ID.get(boss)!;
     d.hp = Math.round(d.hp * f);
     d.shield = Math.round(d.shield * f);
@@ -60,7 +68,9 @@ const tuner = (log: string[]): Tuner => ({ map, wave, hold }) => {
   const was = TOUGHNESS[band];
   TOUGHNESS[band] *= Math.pow(f, 1 / (wave - first + 1));
   log.push(`wave ${wave}: toughness of waves ${band * 10 + 1}-${band * 10 + 10} ${was.toFixed(4)} -> ${TOUGHNESS[band].toFixed(4)}`);
+  lastBossHold.delete(wave);
   return { from: first, note: `toughness ${band * 10 + 1}-${band * 10 + 10} x${f.toFixed(2)} at wave ${wave}` };
+  };
 };
 
 const snapshot = (): Values => ({
