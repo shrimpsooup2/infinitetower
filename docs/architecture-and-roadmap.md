@@ -184,8 +184,11 @@ tools/            bot (playtest), strategist (planning bot), autobalance (tunes 
   each shape weaker without making them fewer: fewer shapes would also pay less bounty, and
   the bot would come out weaker. The bot then goes back to an exact save just before the
   first wave the change affects and plays on. Maps run in parallel, and the easiest value
-  any map needed is printed, ready to write into the content. It prints a line per wave and
-  per change as it goes, stops each map after `--minutes` (40) and reports what it has. The
+  any map needed is printed, ready to write into the content. After a win it also measures
+  how much more HP each boss wave could have had, and a boss that every map beat with room
+  to spare is raised (keeping 15% in hand), so the game ends up just beatable rather than
+  comfortable. It prints a line per wave and per change as it goes, stops each map after
+  `--minutes` (40) and reports what it has. The
   Strategist plays light for this (fewer candidates per step, about twice as fast) unless
   `--full`.
 - `tools/screenshot.ts` drives every screen in headless Chromium, including a gallery of every

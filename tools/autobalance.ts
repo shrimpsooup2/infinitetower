@@ -11,7 +11,10 @@
 //     pay, stays the same.
 //
 // Then the game goes back to an exact save just before the first wave the
-// change affects and plays on, until the map is won. Maps run in parallel, one
+// change affects and plays on, until the map is won. After a win it measures
+// how much more HP each boss wave could have had; a boss that every map beat
+// with room to spare is raised (keeping 15% in hand), so the game ends up
+// just beatable rather than comfortable. Maps run in parallel, one
 // per core; each ends with its own values, and the easiest of them all is what
 // every map can be won with. It prints those, to be written into
 // src/content/enemies.ts (boss hp and shield) and src/content/waves.ts
@@ -82,17 +85,20 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     const t0 = Date.now();
     const say = (l: string) => process.stderr.write(`[${((Date.now() - t0) / 60000).toFixed(0).padStart(3)} min] ${mapId.padEnd(11)} ${l}\n`);
     const r = await play(mapId, diff as Diff, 7919, {
-      threads: 1, tries: 0, tune: tuner(log), light: !args.includes('--full'), say, deadline: t0 + minutes * 60000,
+      threads: 1, tries: 0, tune: tuner(log), light: !args.includes('--full'), say, deadline: t0 + minutes * 60000, margins: true,
       trace: args.includes('--trace'),
     });
     say(r.won ? `won with ${r.lives} lives` : `stopped at wave ${r.wave} (time limit)`);
-    process.stdout.write(JSON.stringify({ map: mapId, won: r.won, wave: r.wave, lives: r.lives, log, values: snapshot() }) + '\n');
+    // Spare room per boss (after a win): the boss's HP could be this many times higher.
+    const spare = Object.fromEntries(Object.entries(r.spare ?? {}).map(([n, k]) => [bossFor(MAP_BY_ID.get(mapId)!, Number(n))!, k]));
+    if (r.won) say(`spare room at bosses: ${Object.entries(spare).map(([b, k]) => `${b} x${k.toFixed(2)}`).join(', ')}`);
+    process.stdout.write(JSON.stringify({ map: mapId, won: r.won, wave: r.wave, lives: r.lives, log, spare, values: snapshot() }) + '\n');
   } else {
     const pick = (a: string) => a === 'all' ? MAPS.map((m) => m.id) : /^act[123]$/.test(a) ? MAPS.filter((m) => m.act === Number(a[3])).map((m) => m.id) : a.split(',').filter((id) => MAP_BY_ID.has(id));
     const maps = pos[0] ? pos[0].split(',').flatMap(pick) : ['fork', 'twinrivers', 'nebula', 'horizon'];
     const diff = (pos[1] ?? 'hard') as Diff;
     const before = snapshot();
-    const results: { map: string; won: boolean; wave: number; lives: number; log: string[]; values: Values }[] = [];
+    const results: { map: string; won: boolean; wave: number; lives: number; log: string[]; spare?: Record<string, number>; values: Values }[] = [];
     const queue = [...maps].sort((a, b) => MAP_BY_ID.get(b)!.waves - MAP_BY_ID.get(a)!.waves);
     let running = 0;
     console.log(`balancing ${maps.join(', ')} on ${diff}, ${jobs} at a time`);
@@ -118,6 +124,22 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       for (const [id, v] of Object.entries(out.bosses)) {
         const b = before.bosses[id];
         if (v.hp !== b.hp || v.shield !== b.shield) console.log(`  ${id.padEnd(16)} hp ${b.hp} -> ${v.hp}, shield ${b.shield} -> ${v.shield}`);
+      }
+      // The other way: a boss every map beat with room to spare can take more HP
+      // (keeping 15% in hand), unless some map had to ease it.
+      const eased = new Set(Object.keys(out.bosses).filter((id) => out.bosses[id].hp !== before.bosses[id].hp));
+      const room = new Map<string, number>();
+      for (const r of results) for (const [id, k] of Object.entries(r.spare ?? {})) room.set(id, Math.min(room.get(id) ?? Infinity, r.won ? k : 1));
+      const harder = [...room].filter(([id, k]) => !eased.has(id) && k / 1.15 > 1.1);
+      if (harder.length) {
+        console.log('could take more HP (every map that met it beat it with room to spare):');
+        for (const [id, k] of harder) {
+          const f = Math.min(2, k / 1.15);
+          const b = out.bosses[id];
+          b.hp = Math.round((b.hp * f) / 100) * 100;
+          b.shield = Math.round((b.shield * f) / 100) * 100;
+          console.log(`  ${id.padEnd(16)} x${f.toFixed(2)} -> hp ${b.hp}, shield ${b.shield}`);
+        }
       }
       console.log(`\n${JSON.stringify(out)}`);
     };

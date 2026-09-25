@@ -546,6 +546,8 @@ export interface Result {
   hold: number;
   /** How many times the search went back to try another policy. */
   tries: number;
+  /** After a win (with `margins`): per boss wave, the HP multiple it could have had and still been survived. */
+  spare?: Record<number, number>;
   rollouts: number;
   ms: number;
 }
@@ -601,6 +603,8 @@ export async function play(
     say?: (line: string) => void;
     /** Stop at this time (ms since the epoch) and report the game so far. */
     deadline?: number;
+    /** After a win, measure each boss wave's spare room (Result.spare). */
+    margins?: boolean;
   } = {},
 ): Promise<Result & { script?: Script }> {
   const t0 = Date.now();
@@ -615,6 +619,8 @@ export async function play(
   // Checkpoints: the exact state at the start of each wave of the current line,
   // the steps played before it, and the policies already tried from there.
   const checkpoints = new Map<number, { save: WorldSave; steps: number; tried: Set<string> }>();
+  // The state just before each boss wave was called (for measuring spare room after a win).
+  const bossSnaps = new Map<number, WorldSave>();
 
   /** Play on from `w` with the current policy until the game ends. */
   const run = async (w: World, steps: Step[]): Promise<Line> => {
@@ -635,6 +641,7 @@ export async function play(
       o.say?.(`wave ${w.waveN + 1}, ${w.lives} lives, ${moves.filter((m) => !m.startsWith('saves')).length} buys (${((Date.now() - tw) / 1000).toFixed(0)}s)`);
       const l0 = w.lives;
       last = w.snapshot();
+      if (bossFor(map, w.waveN + 1)) bossSnaps.set(w.waveN + 1, last);
       const called = w.callWave();
       steps.push({ tick, calls: [...log], after: { gold: w.gold, lives: w.lives, waveN: w.waveN } });
       if (called !== null && w.quiescent()) break;
@@ -717,6 +724,18 @@ export async function play(
   }
 
   const hold = !best.won && !best.timeout && best.last ? await holdOf(best.last) : 1;
+  // After a win: how much more HP each boss wave could have had and still been survived.
+  const spare: Record<number, number> = {};
+  if (o.margins && best.won && best === line) {
+    for (const [n, snap] of bossSnaps) {
+      let lo = 1, hi = 4;
+      for (let i = 0; i < 6; i++) {
+        const mid = (lo + hi) / 2;
+        if ((await probe1(ctx, { snap, move: null, stress: mid }))!.lives < snap.lives) lo = mid; else hi = mid;
+      }
+      spare[n] = lo;
+    }
+  }
   ctx.pool?.close();
   const w = best.w;
   const tiers = [1, 2, 3].map((k) => w.towers.filter((t) => t.tier === k).length).join('/');
@@ -724,6 +743,7 @@ export async function play(
     map: mapId, diff, seed, won: best.won, wave: best.wave, lives: best.lives,
     towers: `${w.towers.length} (${tiers})`, fused: w.towers.filter((t) => t.sockets.length >= 2).length,
     levels: w.towers.reduce((a, t) => a + t.level - 1, 0), hold, tries, rollouts: ctx.rollouts, ms: Date.now() - t0,
+    ...(o.margins ? { spare } : {}),
   };
   const script: Script | undefined = o.record ? { map: mapId, diff, seed, start, steps: best.steps, result } : undefined;
   return { ...result, script };
