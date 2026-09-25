@@ -12,6 +12,9 @@ import { generateWave } from '../src/content/waves.ts';
 import { PACKS, SCRAP_VALUE } from '../src/content/packs.ts';
 import { POWER_MIN_RARITY } from '../src/content/rarity.ts';
 import { getModel } from '../src/client/render/geometry.ts';
+import { atan2, cos, pow, sin } from '../src/sim/math.ts';
+import { readFileSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
 
 const meadow = MAPS[0];
 
@@ -41,6 +44,38 @@ test('same seed and commands give the same game', () => {
   }
   assert.equal(digest(a), digest(b));
   assert.ok(a.stats.kills > 0, 'towers should kill something');
+});
+
+test('the sim uses portable math, so Node and every browser play the same game', () => {
+  // Engines differ in the last bit of Math.sin, cos and pow; src/sim/math.ts has exact versions.
+  const walk = (dir: string): string[] =>
+    readdirSync(dir, { withFileTypes: true }).flatMap((d) => (d.isDirectory() ? walk(join(dir, d.name)) : d.name.endsWith('.ts') ? [join(dir, d.name)] : []));
+  const bad: string[] = [];
+  for (const f of ['src/sim', 'src/effects', 'src/content'].flatMap(walk)) {
+    if (f.endsWith(join('sim', 'math.ts'))) continue;
+    readFileSync(f, 'utf8').split('\n').forEach((line, i) => {
+      const code = line.replace(/\/\/.*$/, '').replace(/\/\*.*?\*\//g, '').replace(/^\s*\*.*$/, '');
+      if (/\bMath\.(sin|cos|tan|asin|acos|atan2?|sinh|cosh|tanh|exp|expm1|log|log1p|log2|log10|pow|cbrt|hypot)\(|[\w)\]]\s*\*\*\s*[\w(.-]/.test(code)) bad.push(`${f}:${i + 1}: ${line.trim()}`);
+    });
+  }
+  assert.deepEqual(bad, []);
+});
+
+test('portable sin, cos, atan2 and pow agree with Math to within an ulp or so', () => {
+  let seed = 11;
+  const r = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  for (let i = 0; i < 20000; i++) {
+    const a = (r() - 0.5) * 40, b = (r() - 0.5) * 40, big = r() * 50000;
+    assert.ok(Math.abs(sin(a) - Math.sin(a)) <= 2.3e-16, `sin ${a}`);
+    assert.ok(Math.abs(cos(a) - Math.cos(a)) <= 2.3e-16, `cos ${a}`);
+    assert.ok(Math.abs(sin(big) - Math.sin(big)) <= 2.3e-16 && Math.abs(cos(big) - Math.cos(big)) <= 2.3e-16, `trig ${big}`);
+    assert.ok(Math.abs(atan2(a, b) - Math.atan2(a, b)) <= 4.5e-16, `atan2 ${a} ${b}`);
+    const k = Math.floor(r() * 130) - 10, base = 0.5 + r() * 1.5;
+    assert.ok(Math.abs(pow(base, k) / Math.pow(base, k) - 1) < 1e-13, `pow ${base} ${k}`);
+  }
+  for (const [y, x] of [[0, 1], [0, -1], [-0, -1], [1, 0], [-1, 0], [0, 0], [-0, 0], [0, -0], [Infinity, Infinity], [1, -Infinity], [Infinity, 1]]) {
+    assert.ok(Object.is(atan2(y, x), Math.atan2(y, x)), `atan2(${y}, ${x})`);
+  }
 });
 
 test('a snapshot restores into an identical game', () => {

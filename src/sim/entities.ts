@@ -7,7 +7,7 @@ import { type Ctx, evalValue, makeCtx, runActions, dispatch, towerEvent } from '
 import { applyStatus, dealDamage, pathOf } from './combat.ts';
 import { BUILTIN_STATUS_DEFS } from './statuses.ts';
 import { DAMAGE_COLORS } from '../content/colors.ts';
-import { clamp, dist2, segDist2, TAU, turnToward } from './math.ts';
+import { atan2, clamp, cos, dist2, hypot, segDist2, sin, TAU, turnToward } from './math.ts';
 import { RULES } from '../content/rules.ts';
 
 const tmp = { x: 0, y: 0, ang: 0 };
@@ -70,7 +70,7 @@ export interface ProjInit {
 export function makeProjectile(w: World, o: ProjInit): Projectile | null {
   const p: Projectile = {
     id: w.nextId++, tower: o.tower?.id ?? 0, alive: true, x: o.x, y: o.y, px: o.x, py: o.y,
-    vx: Math.cos(o.ang) * o.speed, vy: Math.sin(o.ang) * o.speed, speed: o.speed, motion: o.motion, age: 0, life: o.life,
+    vx: cos(o.ang) * o.speed, vy: sin(o.ang) * o.speed, speed: o.speed, motion: o.motion, age: 0, life: o.life,
     radius: o.radius, targetId: o.target?.id ?? 0, damage: o.damage, dtype: o.dtype, pierce: o.pierce, bounce: o.bounce,
     splash: o.splash, hitsAir: o.hitsAir, hitsGround: o.hitsGround, hit: [], depth: o.depth, isBase: o.isBase,
     procCoef: o.procCoef, crit: o.crit, tpl: o.tpl, rt: o.rt, ox: o.x, oy: o.y, ang: o.ang, t: 0, returning: false,
@@ -80,8 +80,8 @@ export function makeProjectile(w: World, o: ProjInit): Projectile | null {
   const host = o.hostId ? w.towerById.get(o.hostId) ?? o.tower : o.tower;
   switch (o.motion) {
     case 'lob': {
-      let tx = o.x + Math.cos(o.ang) * 1.5;
-      let ty = o.y + Math.sin(o.ang) * 1.5;
+      let tx = o.x + cos(o.ang) * 1.5;
+      let ty = o.y + sin(o.ang) * 1.5;
       if (o.target) {
         const flight = clamp(Math.sqrt(dist2(o.target.x, o.target.y, o.x, o.y)) / Math.max(1, o.speed), 0.45, 1.4);
         p.life = o.isBase ? o.life : flight;
@@ -91,8 +91,8 @@ export function makeProjectile(w: World, o: ProjInit): Projectile | null {
         ty = tmp.y;
       } else if (o.aimMode === 'random') {
         const r = 0.8 + w.rng.next();
-        tx = o.x + Math.cos(o.ang) * r;
-        ty = o.y + Math.sin(o.ang) * r;
+        tx = o.x + cos(o.ang) * r;
+        ty = o.y + sin(o.ang) * r;
         p.life = 0.55;
       }
       p.tx = tx;
@@ -108,8 +108,8 @@ export function makeProjectile(w: World, o: ProjInit): Projectile | null {
       } else if (!fromTower) {
         // Scatter around the origin point (e.g. raining around an impact).
         const r = 0.3 + w.rng.next() * 1.1;
-        tx = o.x + Math.cos(o.ang) * r;
-        ty = o.y + Math.sin(o.ang) * r;
+        tx = o.x + cos(o.ang) * r;
+        ty = o.y + sin(o.ang) * r;
       } else if (host) {
         const pool = w.hash.query(host.x, host.y, host.stats.range, 0.5).filter((e) => canHit(w, e, o.hitsAir, true));
         if (pool.length) {
@@ -119,8 +119,8 @@ export function makeProjectile(w: World, o: ProjInit): Projectile | null {
         } else {
           const a = w.rng.next() * TAU;
           const r = host.stats.range * Math.sqrt(w.rng.next());
-          tx = host.x + Math.cos(a) * r;
-          ty = host.y + Math.sin(a) * r;
+          tx = host.x + cos(a) * r;
+          ty = host.y + sin(a) * r;
         }
       }
       p.x = p.px = p.tx = tx;
@@ -148,8 +148,8 @@ export function makeProjectile(w: World, o: ProjInit): Projectile | null {
       break;
     case 'hitscan': {
       const len = host ? host.stats.range : 5;
-      const x2 = o.x + Math.cos(o.ang) * len;
-      const y2 = o.y + Math.sin(o.ang) * len;
+      const x2 = o.x + cos(o.ang) * len;
+      const y2 = o.y + sin(o.ang) * len;
       const hits: Enemy[] = [];
       for (const e of w.hash.query((o.x + x2) / 2, (o.y + y2) / 2, len / 2 + 0.2, 0.8)) {
         if (!canHit(w, e, o.hitsAir, o.hitsGround)) continue;
@@ -189,7 +189,7 @@ function projCtx(w: World, p: Projectile, target: Enemy | null): Ctx | null {
   if (!p.rt) return null;
   const owner = w.towerById.get(p.tower) ?? null;
   const host = w.towerById.get(p.hostId) ?? owner;
-  const ctx = makeCtx(w, p.rt, owner, { target, px: p.x, py: p.y, depth: p.depth, host: host ?? undefined, aim: Math.atan2(p.vy, p.vx) }, null, 'projectile');
+  const ctx = makeCtx(w, p.rt, owner, { target, px: p.x, py: p.y, depth: p.depth, host: host ?? undefined, aim: atan2(p.vy, p.vx) }, null, 'projectile');
   ctx.potency = p.potency;
   ctx.dmgBase = p.dmgBase;
   return ctx;
@@ -209,7 +209,7 @@ function projHit(w: World, p: Projectile, e: Enemy, mult = 1): void {
     w.fx.push({ k: 'hit', x: p.x, y: p.y, vfx: null, colors: p.rt?.colors ?? w.defaultColors, dcolor: p.look.color, size: p.radius });
   }
   if (t) {
-    const init = { target: e, px: e.x, py: e.y, depth: p.depth, procCoef: p.procCoef, aim: Math.atan2(p.vy, p.vx) };
+    const init = { target: e, px: e.x, py: e.y, depth: p.depth, procCoef: p.procCoef, aim: atan2(p.vy, p.vx) };
     towerEvent(w, t, 'on_hit', init);
     if (p.crit) towerEvent(w, t, 'on_crit', init);
   }
@@ -278,9 +278,9 @@ export function updateProjectiles(w: World, dt: number): void {
           t = n ?? undefined;
         }
         if (t) {
-          const a = turnToward(Math.atan2(p.vy, p.vx), Math.atan2(t.y - p.y, t.x - p.x), 14 * dt);
-          p.vx = Math.cos(a) * p.speed;
-          p.vy = Math.sin(a) * p.speed;
+          const a = turnToward(atan2(p.vy, p.vx), atan2(t.y - p.y, t.x - p.x), 14 * dt);
+          p.vx = cos(a) * p.speed;
+          p.vy = sin(a) * p.speed;
         }
         p.x += p.vx * dt;
         p.y += p.vy * dt;
@@ -294,9 +294,9 @@ export function updateProjectiles(w: World, dt: number): void {
         if (p.returning) {
           const h = w.towerById.get(p.hostId);
           const hx = h?.x ?? p.ox, hy = h?.y ?? p.oy;
-          const a = turnToward(Math.atan2(p.vy, p.vx), Math.atan2(hy - p.y, hx - p.x), 9 * dt);
-          p.vx = Math.cos(a) * p.speed;
-          p.vy = Math.sin(a) * p.speed;
+          const a = turnToward(atan2(p.vy, p.vx), atan2(hy - p.y, hx - p.x), 9 * dt);
+          p.vx = cos(a) * p.speed;
+          p.vy = sin(a) * p.speed;
           if (dist2(p.x, p.y, hx, hy) < 0.09) p.age = p.life;
         }
         p.x += p.vx * dt;
@@ -311,10 +311,10 @@ export function updateProjectiles(w: World, dt: number): void {
           break;
         }
         p.t += (p.speed / 1.2) * dt;
-        p.x = h.x + Math.cos(p.t) * 1.2;
-        p.y = h.y + Math.sin(p.t) * 1.2;
-        p.vx = -Math.sin(p.t);
-        p.vy = Math.cos(p.t);
+        p.x = h.x + cos(p.t) * 1.2;
+        p.y = h.y + sin(p.t) * 1.2;
+        p.vx = -sin(p.t);
+        p.vy = cos(p.t);
         if (Math.floor(p.age / 0.6) !== Math.floor((p.age - dt) / 0.6)) p.hit.length = 0;
         break;
       }
@@ -322,25 +322,25 @@ export function updateProjectiles(w: World, dt: number): void {
         p.t += dt;
         const r = p.speed * p.t * 0.6;
         const a = p.ang + p.t * 3;
-        p.x = p.ox + Math.cos(a) * r;
-        p.y = p.oy + Math.sin(a) * r;
-        p.vx = Math.cos(a + Math.PI / 2);
-        p.vy = Math.sin(a + Math.PI / 2);
+        p.x = p.ox + cos(a) * r;
+        p.y = p.oy + sin(a) * r;
+        p.vx = cos(a + Math.PI / 2);
+        p.vy = sin(a + Math.PI / 2);
         break;
       }
       case 'sine': {
         p.t += dt;
         const f = p.speed * p.t;
-        const l = 0.35 * Math.sin(p.t * 9);
-        p.x = p.ox + Math.cos(p.ang) * f - Math.sin(p.ang) * l;
-        p.y = p.oy + Math.sin(p.ang) * f + Math.cos(p.ang) * l;
+        const l = 0.35 * sin(p.t * 9);
+        p.x = p.ox + cos(p.ang) * f - sin(p.ang) * l;
+        p.y = p.oy + sin(p.ang) * f + cos(p.ang) * l;
         break;
       }
       case 'lob': {
         const k = Math.min(1, p.age / p.life);
         p.x = p.ox + (p.tx - p.ox) * k;
         p.y = p.oy + (p.ty - p.oy) * k;
-        p.height = Math.sin(Math.PI * k) * 1.2;
+        p.height = sin(Math.PI * k) * 1.2;
         if (k >= 1) {
           explode(w, p, p.tx, p.ty);
           endProjectile(w, p);
@@ -361,8 +361,8 @@ export function updateProjectiles(w: World, dt: number): void {
         path.at(p.pathDist, tmp);
         p.x = tmp.x;
         p.y = tmp.y;
-        p.vx = -Math.cos(tmp.ang);
-        p.vy = -Math.sin(tmp.ang);
+        p.vx = -cos(tmp.ang);
+        p.vy = -sin(tmp.ang);
         if (p.pathDist <= 0) p.age = p.life;
         break;
       }
@@ -417,9 +417,9 @@ export function updateProjectiles(w: World, dt: number): void {
             p.pierce = 0;
             p.targetId = n.id;
             p.motion = 'homing';
-            const a = Math.atan2(n.y - p.y, n.x - p.x);
-            p.vx = Math.cos(a) * p.speed;
-            p.vy = Math.sin(a) * p.speed;
+            const a = atan2(n.y - p.y, n.x - p.x);
+            p.vx = cos(a) * p.speed;
+            p.vy = sin(a) * p.speed;
             p.age = Math.min(p.age, p.life * 0.5);
             break;
           }
@@ -545,8 +545,8 @@ export function spawnDrone(w: World, ctx: Ctx, lifetime: number, damage: number)
   if (!h) return;
   const a = w.rng.next() * TAU;
   const d: Drone = {
-    id: w.nextId++, tower: ctx.owner?.id ?? h.id, alive: true, x: h.x + Math.cos(a) * 0.3, y: h.y + Math.sin(a) * 0.3,
-    px: h.x, py: h.y, vx: Math.cos(a) * 2, vy: Math.sin(a) * 2, angle: a, targetId: 0, sting: 0, life: lifetime,
+    id: w.nextId++, tower: ctx.owner?.id ?? h.id, alive: true, x: h.x + cos(a) * 0.3, y: h.y + sin(a) * 0.3,
+    px: h.x, py: h.y, vx: cos(a) * 2, vy: sin(a) * 2, angle: a, targetId: 0, sting: 0, life: lifetime,
     damage, isBase: false, depth: ctx.depth + 1, color: ctx.rt.colors.base, phase: w.rng.next() * TAU,
   };
   if (ctx.owner) ctx.owner.liveSpawns++;
@@ -556,7 +556,7 @@ export function spawnDrone(w: World, ctx: Ctx, lifetime: number, damage: number)
 export function spawnBaseDrone(w: World, t: Tower): void {
   const a = w.rng.next() * TAU;
   const d: Drone = {
-    id: w.nextId++, tower: t.id, alive: true, x: t.x, y: t.y, px: t.x, py: t.y, vx: Math.cos(a) * 2, vy: Math.sin(a) * 2,
+    id: w.nextId++, tower: t.id, alive: true, x: t.x, y: t.y, px: t.x, py: t.y, vx: cos(a) * 2, vy: sin(a) * 2,
     angle: a, targetId: 0, sting: 0.3, life: Infinity, damage: 0, isBase: true, depth: 0, color: t.look.color,
     phase: w.rng.next() * TAU,
   };
@@ -613,18 +613,18 @@ export function updateDrones(w: World, dt: number, onBaseSting: (t: Tower, d: Dr
       gy = target.y;
     } else {
       const a = w.time * 1.6 + d.phase;
-      gx = t.x + Math.cos(a) * 0.75;
-      gy = t.y + Math.sin(a) * 0.75;
+      gx = t.x + cos(a) * 0.75;
+      gy = t.y + sin(a) * 0.75;
     }
     const speed = d.isBase ? 4.5 : 5;
     const dx = gx - d.x, dy = gy - d.y;
-    const len = Math.hypot(dx, dy) || 1;
+    const len = hypot(dx, dy) || 1;
     const k = Math.min(1, 7 * dt);
     d.vx += ((dx / len) * speed - d.vx) * k;
     d.vy += ((dy / len) * speed - d.vy) * k;
     d.x += d.vx * dt;
     d.y += d.vy * dt;
-    d.angle = Math.atan2(d.vy, d.vx);
+    d.angle = atan2(d.vy, d.vx);
     if (target && !disabled && d.sting <= 0) {
       const r = target.size + 0.2;
       if (dist2(target.x, target.y, d.x, d.y) <= r * r) {

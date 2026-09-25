@@ -8,7 +8,7 @@ import { makeProjectile, spawnBaseDrone, chassisCtx, canHit } from './entities.t
 import { BUILTIN_STATUS_DEFS } from './statuses.ts';
 import { ATTACK_EVENT_MIN, LEVELS } from '../content/towers.ts';
 import { DAMAGE_COLORS } from '../content/colors.ts';
-import { angleDiff, dist2, segDist2, turnToward } from './math.ts';
+import { angleDiff, atan2, cos, dist2, pow, segDist2, sin, turnToward } from './math.ts';
 import { RULES } from '../content/rules.ts';
 
 const TICKS = RULES.tickRate;
@@ -187,7 +187,7 @@ function muzzle(w: World, t: Tower, aim: number): void {
   if (mv) {
     const r = 0.55;
     w.fx.push({
-      k: 'vfx', def: mv, x: t.x + Math.cos(aim) * r, y: t.y + Math.sin(aim) * r, x2: t.x + Math.cos(aim) * (r + 1), y2: t.y + Math.sin(aim) * (r + 1),
+      k: 'vfx', def: mv, x: t.x + cos(aim) * r, y: t.y + sin(aim) * r, x2: t.x + cos(aim) * (r + 1), y2: t.y + sin(aim) * (r + 1),
       ang: aim, colors: t.rt!.colors, dcolor: DAMAGE_COLORS[t.def.dtype], size: 0.7, tint: null, text: null,
     });
   }
@@ -214,7 +214,7 @@ function fireBaseProjectile(w: World, t: Tower, target: Enemy, ang: number, mult
   }
   const r = 0.55;
   makeProjectile(w, {
-    tower: t, rt: t.rt, x: t.x + Math.cos(ang) * r, y: t.y + Math.sin(ang) * r, ang, target, motion, speed,
+    tower: t, rt: t.rt, x: t.x + cos(ang) * r, y: t.y + sin(ang) * r, ang, target, motion, speed,
     radius: (d.projRadius ?? 0.1) * t.look.size, life, damage: dmg, dtype: d.dtype, pierce: t.stats.pierce,
     bounce: t.stats.bounce, splash: t.stats.splash, hitsAir: d.hitsAir, hitsGround: d.hitsGround, depth: 0, isBase: true,
     procCoef: d.procCoef, crit, tpl: null, look: t.look, applyStatus: d.onHitStatus ?? null, dmgBase: t.stats.damage,
@@ -250,13 +250,13 @@ function chainAttack(w: World, t: Tower, first: Enemy, mult: number, aim: number
     const look = { style: 'lightning' as const, width: [0.1, 0.05] as [number, number], color: 'base', core: '#ffffff', glow: true, amplitude: 0.22, duration: 0.16, ...(t.rt?.spec.visual?.beam ?? {}) };
     w.fx.push({ k: 'beam', x1: t.x, y1: t.y, x2: cur.x, y2: cur.y, pts, look, colors: t.rt?.colors ?? w.defaultColors, dcolor: t.look.color, dur: look.duration ?? 0.16 });
   }
-  chain.forEach((e, i) => chassisHit(w, t, e, t.stats.damage * mult * Math.pow(0.85, i), 0, aim));
+  chain.forEach((e, i) => chassisHit(w, t, e, t.stats.damage * mult * pow(0.85, i), 0, aim));
 }
 
 function lineAttack(w: World, t: Tower, ang: number, mult: number): void {
   const len = t.stats.range;
-  const x1 = t.x + Math.cos(ang) * 0.5, y1 = t.y + Math.sin(ang) * 0.5;
-  const x2 = t.x + Math.cos(ang) * len, y2 = t.y + Math.sin(ang) * len;
+  const x1 = t.x + cos(ang) * 0.5, y1 = t.y + sin(ang) * 0.5;
+  const x2 = t.x + cos(ang) * len, y2 = t.y + sin(ang) * len;
   const hits: Enemy[] = [];
   for (const e of w.hash.query((x1 + x2) / 2, (y1 + y2) / 2, len / 2 + 0.2, 0.8)) {
     if (!isTargetable(w, e, t)) continue;
@@ -278,7 +278,7 @@ function coneTick(w: World, t: Tower, mult: number): void {
     if (!isTargetable(w, e, t)) continue;
     const rr = r + e.size * 0.5;
     if (dist2(e.x, e.y, t.x, t.y) > rr * rr) continue;
-    if (Math.abs(angleDiff(t.angle, Math.atan2(e.y - t.y, e.x - t.x))) > half + 0.15) continue;
+    if (Math.abs(angleDiff(t.angle, atan2(e.y - t.y, e.x - t.x))) > half + 0.15) continue;
     chassisHit(w, t, e, t.stats.damage * mult, 0, t.angle);
   }
 }
@@ -295,7 +295,7 @@ function beamTick(w: World, t: Tower, mult: number): void {
 export function towerAttack(w: World, t: Tower, target: Enemy | null, mult: number, isRepeat: boolean): boolean {
   if (!target || !target.alive || !isTargetable(w, target, t)) target = findTarget(w, t);
   if (!target) return false;
-  const aim = Math.atan2(target.y - t.y, target.x - t.x);
+  const aim = atan2(target.y - t.y, target.x - t.x);
   switch (t.def.chassis) {
     case 'projectile':
     case 'lob': {
@@ -306,7 +306,7 @@ export function towerAttack(w: World, t: Tower, target: Enemy | null, mult: numb
         const others = w.hash.query(t.x, t.y, t.stats.range, 1).filter((e) => e !== target && isTargetable(w, e, t));
         for (let i = 1; i < n && others.length; i++) {
           const o = others.splice(w.rng.int(0, others.length - 1), 1)[0];
-          fireBaseProjectile(w, t, o, Math.atan2(o.y - t.y, o.x - t.x), mult);
+          fireBaseProjectile(w, t, o, atan2(o.y - t.y, o.x - t.x), mult);
         }
       } else {
         const step = 0.16;
@@ -489,7 +489,7 @@ export function updateTowers(w: World, dt: number): void {
           }
         }
         t.beamTargets = ids;
-        t.angle = turnToward(t.angle, Math.atan2(main.y - t.y, main.x - t.x), 10 * dt);
+        t.angle = turnToward(t.angle, atan2(main.y - t.y, main.x - t.x), 10 * dt);
         t.beamTimer -= dt;
         if (t.beamTimer <= 0) {
           t.beamTimer += 1 / Math.max(0.5, t.stats.rate);
@@ -510,7 +510,7 @@ export function updateTowers(w: World, dt: number): void {
           break;
         }
         t.coneOn = true;
-        t.angle = turnToward(t.angle, Math.atan2(target.y - t.y, target.x - t.x), 7 * dt);
+        t.angle = turnToward(t.angle, atan2(target.y - t.y, target.x - t.x), 7 * dt);
         t.beamTimer -= dt;
         if (t.beamTimer <= 0) {
           t.beamTimer += 1 / Math.max(0.5, t.stats.rate);
@@ -527,7 +527,7 @@ export function updateTowers(w: World, dt: number): void {
         t.cooldown -= dt;
         const target = findTarget(w, t);
         if (target) {
-          const want = Math.atan2(target.y - t.y, target.x - t.x);
+          const want = atan2(target.y - t.y, target.x - t.x);
           t.angle = turnToward(t.angle, want, 12 * dt);
           if (t.cooldown <= 0) {
             towerAttack(w, t, target, 1, false);

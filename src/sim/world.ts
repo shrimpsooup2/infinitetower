@@ -11,7 +11,7 @@ import type { FusionSpec, VfxDef } from '../effects/types.ts';
 import { Path } from './path.ts';
 import { Rng } from './rng.ts';
 import { SpatialHash } from './spatial.ts';
-import { dist2, hashString } from './math.ts';
+import { dist2, hashString, pow } from './math.ts';
 import { TOWER_BY_ID, SOCKET_COST, SOCKET_RARITY_WEIGHT, LEVELS, towerCostToTier } from '../content/towers.ts';
 import { specAtLevel, withScaling } from '../effects/level.ts';
 import { POWERS, POWER_BY_ID } from '../content/powers.ts';
@@ -277,7 +277,7 @@ export class World {
   levelCost(t: Tower): number | null {
     if (t.level >= LEVELS.max) return null;
     const cards = t.cards.reduce((a, c) => a + (LEVELS.cardWeight[c.rarity] ?? LEVELS.cardWeight[0]), 0);
-    const raw = t.def.cost * LEVELS.base * LEVELS.tierMult[t.tier - 1] * LEVELS.growth ** (t.level - 1) * (1 + cards);
+    const raw = t.def.cost * LEVELS.base * LEVELS.tierMult[t.tier - 1] * pow(LEVELS.growth, t.level - 1) * (1 + cards);
     return Math.round(raw / 5) * 5;
   }
 

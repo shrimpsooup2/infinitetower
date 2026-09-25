@@ -1,7 +1,7 @@
 // A polyline path in tile units. Enemies store their position as a distance
 // along the path, which makes push-back / rewind / teleport effects trivial.
 
-import { clamp, dist } from './math.ts';
+import { atan2, clamp, dist } from './math.ts';
 
 export class Path {
   readonly xs: number[];
@@ -42,7 +42,7 @@ export class Path {
     const x0 = this.xs[i], y0 = this.ys[i], x1 = this.xs[i + 1], y1 = this.ys[i + 1];
     out.x = x0 + (x1 - x0) * t;
     out.y = y0 + (y1 - y0) * t;
-    out.ang = Math.atan2(y1 - y0, x1 - x0);
+    out.ang = atan2(y1 - y0, x1 - x0);
     return out;
   }
 

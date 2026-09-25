@@ -55,6 +55,13 @@ tools/            bot (playtest), strategist (planning bot), autobalance (tunes 
 
 - **Deterministic simulation.**
   - A fixed 60 Hz step and a seeded RNG, and no `Math.random` in the sim.
+  - Portable math: engines disagree in the last bit of `Math.sin`, `Math.cos` and `Math.pow`
+    (Node 22 and Chrome 141 differ on about one call in ten), and over a long game one bit
+    grows into a boss that dies a second later. The sim uses `sin`, `cos`, `atan2`, `pow`
+    and `hypot` from `src/sim/math.ts` instead: fdlibm's kernels written with only
+    `+ - * /` and `Math.sqrt`, which IEEE 754 makes exact everywhere. A test fails if native
+    trig, `pow` or `**` creeps back into `src/sim`, `src/effects` or `src/content`, so a game
+    planned in Node replays tick for tick in any browser.
   - Enemies store their distance along the path rather than free positions.
   - The sim emits `FxEvent`s that the renderer consumes. The sim never draws, and the
     renderer never changes game state.
@@ -110,7 +117,7 @@ tools/            bot (playtest), strategist (planning bot), autobalance (tunes 
   - the validator survives 2,000 random fuzz specs;
   - 300 random offline fusions validate;
   - keys and rules text behave;
-  - the sim is deterministic and save/restore safe;
+  - the sim is deterministic and save/restore safe, and uses only portable math;
   - a final-wave leak is a defeat;
   - all 400 tower × power pairs run;
   - wave and pack rules hold: rarity floors, families, keep counts, Salvage gold, one Gambler

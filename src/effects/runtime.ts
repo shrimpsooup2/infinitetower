@@ -14,7 +14,7 @@ import { BUILTIN_VFX } from './vfxlib.ts';
 import { BUILTIN_STATUS_DEFS } from '../sim/statuses.ts';
 import { RULES } from '../content/rules.ts';
 import { DAMAGE_COLORS, isHex } from '../content/colors.ts';
-import { clamp, dist, dist2, TAU } from '../sim/math.ts';
+import { atan2, clamp, cos, dist, dist2, sin, TAU } from '../sim/math.ts';
 import {
   applyStatus, dealDamage, findStatus, killEnemy, moveAlongPath, pathOf, removeStatus, removeStatusInst, stacksOf, updatePos,
 } from '../sim/combat.ts';
@@ -172,7 +172,7 @@ export function makeCtx(w: World, rt: SpecRuntime, owner: Tower | null, init: Di
     w, rt, owner, host, target,
     px: init.px ?? target?.x ?? hx,
     py: init.py ?? target?.y ?? hy,
-    aim: init.aim ?? (target ? Math.atan2(target.y - hy, target.x - hx) : host?.angle ?? 0),
+    aim: init.aim ?? (target ? atan2(target.y - hy, target.x - hx) : host?.angle ?? 0),
     consumed: 0,
     stored: 0,
     depth: init.depth ?? 0,
@@ -486,7 +486,7 @@ export function resolvePoint(w: World, p: PointRef, ctx: Ctx): [number, number] 
     }
     const a = w.rng.next() * TAU;
     const r = (ctx.host?.stats.range ?? 2) * Math.sqrt(w.rng.next());
-    return [(ctx.host?.x ?? ctx.px) + Math.cos(a) * r, (ctx.host?.y ?? ctx.py) + Math.sin(a) * r];
+    return [(ctx.host?.x ?? ctx.px) + cos(a) * r, (ctx.host?.y ?? ctx.py) + sin(a) * r];
   }
   const t = ctx.target;
   const ahead = 'path_ahead' in p ? p.path_ahead : -p.path_behind;
@@ -608,7 +608,7 @@ function aimAngle(w: World, aim: string, ctx: Ctx, fx: number, fy: number): { an
         const d = dist2(e.x, e.y, fx, fy);
         if (d < bd) { bd = d; best = e; }
       }
-      return best ? { ang: Math.atan2(best.y - fy, best.x - fx), target: best } : { ang: w.rng.next() * TAU, target: null };
+      return best ? { ang: atan2(best.y - fy, best.x - fx), target: best } : { ang: w.rng.next() * TAU, target: null };
     }
     case 'path_back':
     case 'path_forward': {
@@ -623,7 +623,7 @@ function aimAngle(w: World, aim: string, ctx: Ctx, fx: number, fy: number): { an
         const pool = inRange(w, ctx);
         t = pool.length ? pool[0] : null;
       }
-      return t ? { ang: Math.atan2(t.y - fy, t.x - fx), target: t } : { ang: ctx.aim, target: null };
+      return t ? { ang: atan2(t.y - fy, t.x - fx), target: t } : { ang: ctx.aim, target: null };
     }
   }
 }

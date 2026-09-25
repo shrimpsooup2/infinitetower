@@ -6,6 +6,7 @@ import type { Ctx } from '../effects/runtime.ts';
 import { evalValue, dispatch, runActions, statusCtx } from '../effects/runtime.ts';
 import { isCC } from './statuses.ts';
 import { RULES } from '../content/rules.ts';
+import { cos, pow, sin } from './math.ts';
 
 export interface DamageSrc {
   tower: Tower | null;
@@ -22,8 +23,8 @@ export function pathOf(w: World, e: Enemy) {
 export function updatePos(w: World, e: Enemy): void {
   const p = pathOf(w, e);
   p.at(e.dist, tmpPos);
-  const nx = -Math.sin(tmpPos.ang);
-  const ny = Math.cos(tmpPos.ang);
+  const nx = -sin(tmpPos.ang);
+  const ny = cos(tmpPos.ang);
   e.x = tmpPos.x + nx * e.lateral;
   e.y = tmpPos.y + ny * e.lateral;
   e.heading = tmpPos.ang;
@@ -205,8 +206,8 @@ export function refreshDerived(w: World, e: Enemy): void {
     const k = d.stacking === 'add' ? s.stacks : 1;
     // Potency (from the balance solver) scales how strong slows and amps are.
     const pf = Math.min(1.3, Math.sqrt(s.potency));
-    if (d.speedMult < 1) speed *= Math.pow(1 - (1 - d.speedMult) * pf, k);
-    else if (d.speedMult > 1) speed *= Math.pow(d.speedMult, k);
+    if (d.speedMult < 1) speed *= pow(1 - (1 - d.speedMult) * pf, k);
+    else if (d.speedMult > 1) speed *= pow(d.speedMult, k);
     if (d.dmgTakenMult !== 1) dmg *= 1 + (d.dmgTakenMult - 1) * pf * k;
     armor += d.armorDelta * k;
     if (d.hardCC) hard = true;

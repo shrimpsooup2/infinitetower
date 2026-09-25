@@ -1,6 +1,7 @@
 // Economy, difficulty and pacing constants in one place for tuning.
 
 import type { DifficultyDef } from '../sim/types.ts';
+import { pow } from '../sim/math.ts';
 
 export const DIFFICULTIES: DifficultyDef[] = [
   { id: 'casual', name: 'Casual', hp: 0.7, lives: 30, gold: 350, bounty: 1.1 },
@@ -21,7 +22,7 @@ export const RULES = {
   clearBonus: (n: number) => 30 + 9 * n,
   bountyMult: (n: number) => 1 + 0.04 * (n - 1),
   /** Global HP creep on top of the shapes themselves getting bigger. Endless keeps climbing. */
-  hpMult: (n: number) => Math.pow(1.02, n - 1) * (n > 60 ? Math.pow(1.05, n - 60) : 1),
+  hpMult: (n: number) => pow(1.02, n - 1) * (n > 60 ? pow(1.05, n - 60) : 1),
   /** Gold a single tower's effects may grant per wave. */
   towerGoldCap: (n: number) => 30 + 5 * n,
   /** Hard caps that keep any fusion from breaking the game. */
