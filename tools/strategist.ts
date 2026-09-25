@@ -586,11 +586,21 @@ function recordCalls(w: World, log: [string, ...unknown[]][]): void {
 }
 
 /**
- * Eases the game after a loss at `wave`, where the defence would have held
- * `hold` of that wave's HP. Returns the first wave the change affects (the
- * game goes back to just before it), or null to stop balancing.
+ * Balances the game around the bot. `ease` after a loss at `wave`, where the
+ * defence would have held `hold` of that wave's HP: returns the first wave the
+ * change affects (the game goes back to just before it), or null to stop.
  */
-export type Tuner = (loss: { map: MapDef; wave: number; hold: number }) => { from: number; note: string } | null;
+export interface Tuner {
+  ease(loss: { map: MapDef; wave: number; hold: number }): { from: number; note: string } | null;
+  /**
+   * After a win: `spare` holds, for each wave from `raiseFrom` on, how many
+   * times its HP the defence would still have survived. Returns the first wave
+   * a change affects (the game goes back to just before it), or null when
+   * there is nothing to raise.
+   */
+  raise?(win: { map: MapDef; spare: Map<number, number> }): { from: number; note: string } | null;
+  raiseFrom?: number;
+}
 
 /** One line of play, from a start to victory or defeat. */
 interface Line { won: boolean; wave: number; lives: number; w: World; steps: Step[]; last: WorldSave | null; timeout?: boolean }
@@ -619,8 +629,8 @@ export async function play(
   // Checkpoints: the exact state at the start of each wave of the current line,
   // the steps played before it, and the policies already tried from there.
   const checkpoints = new Map<number, { save: WorldSave; steps: number; tried: Set<string> }>();
-  // The state just before each boss wave was called (for measuring spare room after a win).
-  const bossSnaps = new Map<number, WorldSave>();
+  // The state just before each wave was called (for measuring spare room after a win).
+  const waveSnaps = new Map<number, WorldSave>();
 
   /** Play on from `w` with the current policy until the game ends. */
   const run = async (w: World, steps: Step[]): Promise<Line> => {
@@ -641,7 +651,7 @@ export async function play(
       o.say?.(`wave ${w.waveN + 1}, ${w.lives} lives, ${moves.filter((m) => !m.startsWith('saves')).length} buys (${((Date.now() - tw) / 1000).toFixed(0)}s)`);
       const l0 = w.lives;
       last = w.snapshot();
-      if (bossFor(map, w.waveN + 1)) bossSnaps.set(w.waveN + 1, last);
+      waveSnaps.set(w.waveN + 1, last);
       const called = w.callWave();
       steps.push({ tick, calls: [...log], after: { gold: w.gold, lives: w.lives, waveN: w.waveN } });
       if (called !== null && w.quiescent()) break;
@@ -681,12 +691,34 @@ export async function play(
   let tries = 0;
   // Balancing: after a loss the tuner eases the game where it was lost, and the
   // bot goes back to just before the first wave that changed and plays on.
-  for (let tunes = 0; o.tune && !line.won && !line.timeout && tunes < 60; tunes++) {
-    const hold = await holdOf(line.last!);
-    const t = o.tune({ map, wave: line.wave, hold });
+  // After a win the tuner may raise what was beaten with room to spare, and the
+  // bot goes back and plays that again.
+  /** How many times its HP a wave could have had and still been survived (1 to 3). */
+  const spareOf = async (snap: WorldSave) => {
+    let lo = 1, hi = 3;
+    for (let i = 0; i < 5; i++) {
+      const mid = (lo + hi) / 2;
+      if ((await probe1(ctx, { snap, move: null, stress: mid }))!.lives < snap.lives) lo = mid; else hi = mid;
+    }
+    return lo;
+  };
+  for (let tunes = 0; o.tune && !line.timeout && tunes < 80; tunes++) {
+    let t: { from: number; note: string } | null;
+    let why: string;
+    if (!line.won) {
+      const hold = await holdOf(line.last!);
+      t = o.tune.ease({ map, wave: line.wave, hold });
+      why = `lost at wave ${line.wave} (held ${Math.round(hold * 100)}%)`;
+    } else {
+      if (!o.tune.raise || (o.deadline && Date.now() > o.deadline)) break;
+      const spare = new Map<number, number>();
+      for (const [n, snap] of waveSnaps) if (n >= (o.tune.raiseFrom ?? 1) && n <= line.wave) spare.set(n, await spareOf(snap));
+      t = o.tune.raise({ map, spare });
+      why = `won with ${line.lives} lives`;
+    }
     if (!t) break;
-    if (trace) console.log(`  <- lost at wave ${line.wave} (held ${Math.round(hold * 100)}%): ${t.note}; back to wave ${t.from}`);
-    o.say?.(`lost at wave ${line.wave} (held ${Math.round(hold * 100)}%): ${t.note}; back to wave ${t.from}`);
+    if (trace) console.log(`  <- ${why}: ${t.note}; back to wave ${t.from}`);
+    o.say?.(`${why}: ${t.note}; back to wave ${t.from}`);
     const next = await resume(t.from - 1);
     if (!next) break;
     line = best = next;
@@ -727,7 +759,7 @@ export async function play(
   // After a win: how much more HP each boss wave could have had and still been survived.
   const spare: Record<number, number> = {};
   if (o.margins && best.won && best === line) {
-    for (const [n, snap] of bossSnaps) {
+    for (const [n, snap] of [...waveSnaps].filter(([k]) => bossFor(map, k))) {
       let lo = 1, hi = 4;
       for (let i = 0; i < 6; i++) {
         const mid = (lo + hi) / 2;
