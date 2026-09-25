@@ -7,10 +7,10 @@
 //   - a boss wave: the boss's HP and shield, by that share (with a little margin);
 //     if cutting the boss did not help, the leak is its escorts or the shapes it
 //     sheds, and the wave's band is eased instead;
-//   - any other wave: the toughness of its band of ten waves (TOUGHNESS in
-//     src/content/waves.ts), so every shape at that wave has that much less HP
-//     (and every later wave with it). The number of shapes, and the bounty they
-//     pay, stays the same.
+//   - any other wave: the toughness step of its band of ten waves (TOUGHNESS in
+//     src/content/waves.ts), so every shape from the band's first wave on has
+//     that much less HP. The number of shapes, and the bounty they pay, stays
+//     the same.
 //
 // Then the game goes back to an exact save just before the first wave the
 // change affects and plays on, until the map is won. After a win it measures
@@ -61,15 +61,14 @@ const tuner = (log: string[]): Tuner => {
     return { from: wave, note: `${boss} x${f.toFixed(2)}` };
   }
   // Make the band's shapes less tough (not fewer: fewer would also pay less
-  // bounty, and the bot would come out weaker). Spread the cut over the band's
-  // waves up to this one, so the curve stays smooth.
+  // bounty, and the bot would come out weaker), from the band's first wave on.
   const band = growthBand(wave);
-  const first = Math.max(2, band * 10 + 1);
+  const first = band * 10 + 1;
   const was = TOUGHNESS[band];
-  TOUGHNESS[band] *= Math.pow(f, 1 / (wave - first + 1));
-  log.push(`wave ${wave}: toughness of waves ${band * 10 + 1}-${band * 10 + 10} ${was.toFixed(4)} -> ${TOUGHNESS[band].toFixed(4)}`);
+  TOUGHNESS[band] *= f;
+  log.push(`wave ${wave}: toughness from wave ${first} ${was.toFixed(3)} -> ${TOUGHNESS[band].toFixed(3)}`);
   lastBossHold.delete(wave);
-  return { from: first, note: `toughness ${band * 10 + 1}-${band * 10 + 10} x${f.toFixed(2)} at wave ${wave}` };
+  return { from: Math.max(1, first), note: `toughness from wave ${first} x${f.toFixed(2)} (lost at ${wave})` };
   };
 };
 
@@ -116,7 +115,12 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       // The easiest value any map needed is what every map can be won with.
       const out: Values = {
         growth: before.growth.map((g, i) => Math.min(...results.map((r) => r.values.growth[i] ?? g))),
-        toughness: before.toughness.map((g, i) => Math.min(...results.map((r) => r.values.toughness?.[i] ?? g))),
+        // Steps multiply, so compare what each map needed in total at each band, then turn back into steps.
+        toughness: (() => {
+          const total = (t: number[]) => t.map((_, i) => t.slice(0, i + 1).reduce((a, b) => a * b, 1));
+          const need = total(before.toughness).map((x, i) => Math.min(x, ...results.map((r) => total(r.values.toughness ?? before.toughness)[i])));
+          return need.map((x, i) => (i ? x / need[i - 1] : x));
+        })(),
         bosses: {},
       };
       for (const [id, v] of Object.entries(before.bosses)) {

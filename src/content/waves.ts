@@ -26,16 +26,18 @@ export const GROWTH = [1.13, 1.13, 1.13, 1.13, 1.11, 1.11];
 export const growthBand = (n: number) => Math.min(GROWTH.length - 1, Math.floor((n - 1) / 10));
 
 /**
- * How much tougher each shape gets per wave, on top of the HP creep, for the
- * same bands. Unlike GROWTH it leaves the number of shapes (and so the bounty
- * they pay) alone. Also tuned by tools/autobalance.ts.
+ * A step in every shape's HP from the start of each band of ten waves on (the
+ * steps multiply: a band's shapes get its own step and every earlier one).
+ * Unlike GROWTH it leaves the number of shapes, and so the bounty they pay,
+ * alone. The bands start right after a boss wave, so an easing reads as a
+ * breather. Tuned by tools/autobalance.ts.
  */
 export const TOUGHNESS = [1, 1, 1, 1, 1, 1];
 
-/** The product of TOUGHNESS up to wave `n`. */
+/** The product of TOUGHNESS for wave `n`'s band and every band before it. */
 export function toughness(n: number): number {
   let t = 1;
-  for (let k = 2; k <= n; k++) t *= TOUGHNESS[growthBand(k)];
+  for (let b = 0; b <= growthBand(n); b++) t *= TOUGHNESS[b];
   return t;
 }
 

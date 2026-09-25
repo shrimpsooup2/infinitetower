@@ -179,10 +179,12 @@ tools/            bot (playtest), strategist (planning bot), autobalance (tunes 
 - `npm run autobalance -- fork,twinrivers,nebula,horizon hard` eases the game until the
   Strategist can beat it. Each map is played on the difficulty. After a loss, the tuner eases
   what was lost by how close it was. On a boss wave that is the boss's HP and shield. On
-  any other wave it is the toughness of that band of ten waves (`TOUGHNESS` in
-  `src/content/waves.ts`), spread over the band so the curve stays smooth. Toughness makes
-  each shape weaker without making them fewer: fewer shapes would also pay less bounty, and
-  the bot would come out weaker. The bot then goes back to an exact save just before the
+  any other wave it is the toughness step of that band of ten waves (`TOUGHNESS` in
+  `src/content/waves.ts`), from the band's first wave on (the bands start right after a boss,
+  so an easing reads as a breather). If cutting a boss did not help, the leak is its escorts
+  or the shapes it sheds, and the wave's band is eased instead. Toughness makes each shape
+  weaker without making them fewer: fewer shapes would also pay less bounty, and the bot
+  would come out weaker. The bot then goes back to an exact save just before the
   first wave the change affects and plays on. Maps run in parallel, and the easiest value
   any map needed is printed, ready to write into the content. After a win it also measures
   how much more HP each boss wave could have had, and a boss that every map beat with room
